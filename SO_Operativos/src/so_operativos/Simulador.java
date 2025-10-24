@@ -155,33 +155,3 @@ public class Simulador {
         System.out.println("----------------------------------------");
     }
 }
-COMMIT 4
-
-Archivos a añadir: src/so_operativos/Simulador.java
-
-Mensaje de Commit: feat: Implementar núcleo del Simulador (Kernel) con bucle principal
-
-Etapa 5: Interfaz de Usuario (El Menú Principal)
-Objetivo: Crear el punto de entrada Main y una clase ConfiguracionSimulacion para que el simulador sea interactivo.
-
-1. Archivo: ConfiguracionSimulacion.java (Nuevo)
-Acción: Crear la clase de configuración.
-
-Ruta: src/so_operativos/ConfiguracionSimulacion.java
-
-Contenido:
-
-Java
-
-package so_operativos;
-
-public class ConfiguracionSimulacion {
-    private long duracionCicloMs = 100; // Valor por defecto
-
-    public long getDuracionCicloMs() { return duracionCicloMs; }
-    public void setDuracionCicloMs(long duracionCicloMs) { this.duracionCicloMs = duracionCicloMs; }
-
-    public static ConfiguracionSimulacion cargarConfiguracion() {
-        return new ConfiguracionSimulacion(); 
-    }
-}
