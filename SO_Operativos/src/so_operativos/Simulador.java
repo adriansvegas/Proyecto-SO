@@ -4,10 +4,6 @@
  */
 package so_operativos;
 
-/**
- *
- * @author adria
- */
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.ConcurrentHashMap;
 
