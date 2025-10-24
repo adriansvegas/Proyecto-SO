@@ -1,0 +1,6 @@
+PlanificadorFCFS
+PlanificadorPrioridadNoExpropiativa
+PlanificadorPrioridadExpropiativa
+PlanificadorSRT
+PlanificadorRoundRobin
+PlanificadorSJF
