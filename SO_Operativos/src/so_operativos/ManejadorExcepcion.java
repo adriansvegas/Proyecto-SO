@@ -1,3 +1,5 @@
+
+package so_operativos;
 import so_operativos.Proceso;
 import java.util.concurrent.ConcurrentHashMap;
 

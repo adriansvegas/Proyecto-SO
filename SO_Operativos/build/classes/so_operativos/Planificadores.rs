@@ -1,6 +1,6 @@
-PlanificadorFCFS
-PlanificadorPrioridadNoExpropiativa
-PlanificadorPrioridadExpropiativa
-PlanificadorSRT
-PlanificadorRoundRobin
-PlanificadorSJF
+so_operativos.PlanificadorFCFS
+so_operativos.PlanificadorRoundRobin
+so_operativos.PlanificadorPrioridadExpropiativa
+so_operativos.PlanificadorSJF
+so_operativos.PlanificadorPrioridadNoExpropiativa
+so_operativos.PlanificadorSRT

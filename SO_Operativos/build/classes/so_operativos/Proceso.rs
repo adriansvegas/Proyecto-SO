@@ -1,2 +1,0 @@
-Proceso$TipoBound
-Proceso
