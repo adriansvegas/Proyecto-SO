@@ -155,6 +155,53 @@ public class Main {
             simulador.agregarProceso(new Proceso(nombre, instrucciones, prioridad));
         }
     }
+    
+    private static void cambiarPlanificador(Simulador simulador, Scanner scanner) {
+    int quantum = DEFAULT_QUANTUM; 
+
+    System.out.println("\n--- CAMBIAR PLANIFICADOR (6 POLÍTICAS) ---");
+    System.out.println("1. FCFS (No Expropiativo)");
+    System.out.println("2. SJF (No Expropiativo)");
+    System.out.println("3. SRT (SJF Expropiativo)");
+    System.out.println("4. Round Robin (Expropiativo por Quantum)");
+    System.out.println("5. Prioridad (No Expropiativa)");
+    System.out.println("6. Prioridad (Expropiativa)");
+    System.out.print("Seleccione el planificador: ");
+
+    int elec = -1;
+    if (scanner.hasNextInt()) {
+        elec = scanner.nextInt();
+        scanner.nextLine();
+    } else {
+        scanner.nextLine(); 
+        System.out.println("Opción inválida.");
+        return;
+    }
+
+    Planificador nuevoPlanificador;
+    switch (elec) {
+        case 1: nuevoPlanificador = new PlanificadorFCFS(); break;
+        case 2: nuevoPlanificador = new PlanificadorSJF(); break;
+        case 3: nuevoPlanificador = new PlanificadorSRT(); break;
+        case 4:
+            System.out.printf("Ingrese el quantum (ciclos) para Round Robin (Defecto: %d): ", quantum);
+            if (scanner.hasNextInt()) {
+                quantum = scanner.nextInt();
+                scanner.nextLine();
+            } else {
+                scanner.nextLine();
+            }
+            nuevoPlanificador = new PlanificadorRoundRobin(quantum);
+            break;
+        case 5: nuevoPlanificador = new PlanificadorPrioridadNoExpropiativa(); break;
+        case 6: nuevoPlanificador = new PlanificadorPrioridadExpropiativa(); break;
+        default:
+            System.out.println("Opción no reconocida.");
+            return;
+    }
+
+    simulador.setPlanificador(nuevoPlanificador);
+}
 
     private static void modificarDuracionCiclo(Simulador simulador, Scanner scanner) {
         long nuevaDuracion = -1;

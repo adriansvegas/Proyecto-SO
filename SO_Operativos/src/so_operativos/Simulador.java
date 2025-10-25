@@ -54,39 +54,39 @@ public class Simulador {
     public void setPlanificador(Planificador planificador) { 
         this.planificador = planificador; 
         System.out.println("✅ Política de planificación cambiada a: " + planificador.getNombre());
+        reordenarColaListos(null);
     }
 
     public void agregarProceso(Proceso proceso) {
         proceso.setCpuSemaphore(this.cpuSemaphore);
         colaListos.add(proceso);
         proceso.setEstado(EstadoProceso.LISTO);
+        reordenarColaListos(proceso);
     }
 
     public boolean quedanProcesos() {
         return !colaListos.isEmpty() || procesoActual != null || !procesosEnExcepcion.isEmpty();
     }
 
-    public void ejecutarCicloSimulacion() {
-        tiempoSimulacion += config.getDuracionCicloMs();
-        System.out.println("\n--- Ciclo de Simulación @ " + tiempoSimulacion + "ms ---");
+   public void ejecutarCicloSimulacion() {
+    tiempoSimulacion += config.getDuracionCicloMs();
+    System.out.println("\n--- Ciclo de Simulación @ " + tiempoSimulacion + "ms ---");
 
-        // Lógica de Excepciones y Expropiación (se añadirán en etapas futuras)
+    // manejarExcepciones(); // Se añade en la próxima etapa
+    comprobarExpropiacion(); // <--- AÑADIDO
 
-        if (procesoActual == null) {
-            planificarSiguiente();
-        } else {
-            // Lógica de Quantum (se añadirá en una etapa futura)
-        }
-
-        chequearEstadoEjecucion();
-        mostrarEstado();
-
-        try {
-            Thread.sleep(config.getDuracionCicloMs());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+    if (procesoActual == null) {
+        planificarSiguiente();
+    } else {
+        manejarQuantum(); // <--- AÑADIDO
     }
+
+    chequearEstadoEjecucion();
+    mostrarEstado();
+    // ...
+}
+   
+   
 
     private void chequearEstadoEjecucion() {
         if (procesoActual == null) return;
@@ -120,15 +120,95 @@ public class Simulador {
             }
 
             if (siguienteProceso != null) {
-                procesoActual = siguienteProceso;
+        procesoActual = siguienteProceso;
 
-                procesoThread = new Thread(procesoActual);
-                procesoThread.start();
+        if (planificador instanceof PlanificadorRoundRobin rr) { // <--- AÑADIDO
+            ciclosQuantum = rr.getQuantum(); // <--- AÑADIDO
+        }
+
+        procesoThread = new Thread(procesoActual);
 
                 System.out.println("⬅️ CONTEXT SWITCH: Proceso " + procesoActual.getNombre() + " pasa a EJECUCIÓN.");
             }
         }
     }
+    
+    private void reordenarColaListos(Proceso nuevoProceso) {
+    if (planificador instanceof PlanificadorFCFS || planificador instanceof PlanificadorRoundRobin) return;
+
+    Proceso[] lista = colaListos.toArray();
+    int length = colaListos.size();
+
+    // Algoritmo de ordenamiento Burbuja (sin librerías)
+    for (int i = 0; i < length - 1; i++) {
+        for (int j = 0; j < length - 1 - i; j++) {
+            boolean swap = false;
+            Proceso p1 = lista[j];
+            Proceso p2 = lista[j+1];
+
+            if (planificador instanceof PlanificadorSJF || planificador instanceof PlanificadorSRT) {
+                if (p1.getInstruccionesRestantes() > p2.getInstruccionesRestantes()) {
+                    swap = true;
+                }
+            } else { // Prioridad
+                if (p1.getPrioridad() > p2.getPrioridad()) {
+                    swap = true;
+                }
+            }
+
+            if (swap) {
+                Proceso temp = lista[j];
+                lista[j] = lista[j+1];
+                lista[j+1] = temp;
+            }
+        }
+    }
+
+    colaListos.rebuildFrom(lista, length); 
+}
+    
+    private void comprobarExpropiacion() {
+    if (procesoActual == null || colaListos.isEmpty()) return;
+
+    boolean expropiar = false;
+    Proceso candidato = colaListos.peek();
+
+    if (planificador instanceof PlanificadorSRT) {
+        if (candidato.getInstruccionesRestantes() < procesoActual.getInstruccionesRestantes()) expropiar = true;
+    } else if (planificador instanceof PlanificadorPrioridadExpropiativa) {
+        if (candidato.getPrioridad() < procesoActual.getPrioridad()) expropiar = true;
+    }
+
+    if (expropiar) {
+        procesoActual.setEstado(EstadoProceso.LISTO);
+        colaListos.add(procesoActual);
+
+        if (procesoThread != null) procesoThread.interrupt(); 
+
+        procesoActual = null;
+        procesoThread = null;
+        System.out.println("🚨 EXPROPIACIÓN: Proceso expropiado y movido a LISTO.");
+        reordenarColaListos(null); // Asegurar el orden después de añadir el expropiado
+    }
+}
+    
+    private void manejarQuantum() {
+    if (planificador instanceof PlanificadorRoundRobin rr) {
+        ciclosQuantum--;
+        if (ciclosQuantum <= 0) {
+            procesoActual.setEstado(EstadoProceso.LISTO);
+            colaListos.add(procesoActual);
+
+            if (procesoThread != null) procesoThread.interrupt();
+
+            procesoActual = null;
+            procesoThread = null;
+            System.out.println("⏱️ Quantum terminado. Proceso expropiado a LISTO.");
+        }
+    }
+}
+    
+    
 
     public void mostrarEstado() {
         System.out.println("\n--- VISUALIZACIÓN DE ESTADO DEL KERNEL ---");
