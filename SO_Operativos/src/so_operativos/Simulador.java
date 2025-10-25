@@ -72,7 +72,7 @@ public class Simulador {
     tiempoSimulacion += config.getDuracionCicloMs();
     System.out.println("\n--- Ciclo de Simulación @ " + tiempoSimulacion + "ms ---");
 
-    // manejarExcepciones(); // Se añade en la próxima etapa
+    manejarExcepciones();
     comprobarExpropiacion(); // <--- AÑADIDO
 
     if (procesoActual == null) {
@@ -101,15 +101,25 @@ public class Simulador {
                     newArray[i] = procesosTerminadosArray[i];
                 }
                 procesosTerminadosArray = newArray;
-            }
-            procesosTerminadosArray[terminadosCount++] = procesoActual;
+            }else if (procesoActual.getEstado() == EstadoProceso.BLOQUEADO) { // <--- AÑADIDO
+        // Genera una EXCEPCIÓN DE E/S
+        if (procesoThread != null) procesoThread.interrupt(); 
 
-            if (procesoThread != null) procesoThread.interrupt(); 
-            procesoActual = null;
-            procesoThread = null;
-            System.out.println("🛑 Proceso terminó.");
-        } 
-        // Lógica de E/S (se añadirá en una etapa futura)
+        ManejadorExcepcion handler = new ManejadorExcepcion(
+            procesoActual, 
+            colaListos, 
+            config.getDuracionCicloMs()
+        );
+        Thread handlerThread = new Thread(handler, "Excepción-" + procesoActual.getId());
+        handlerThread.start();
+
+        procesosEnExcepcion.put(procesoActual.getId(), handlerThread);
+        System.out.println("🚨 EXCEPCIÓN: " + procesoActual.getNombre() + " genera E/S. En cola de excepción.");
+
+        procesoActual = null;
+        procesoThread = null;
+        reordenarColaListos(null);
+    }
     }
 
     private void planificarSiguiente() {
@@ -235,4 +245,9 @@ public class Simulador {
         }
         System.out.println("----------------------------------------");
     }
+    
+    private void manejarExcepciones() {
+    // Remover hilos de excepción que han terminado
+    procesosEnExcepcion.entrySet().removeIf(entry -> !entry.getValue().isAlive());
+}
 }

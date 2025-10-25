@@ -89,11 +89,56 @@ public class Proceso implements Runnable {
 
     @Override
     public void run() {
-        // Lógica de ejecución se añadirá en una etapa posterior
+        try {
+        cpuSemaphore.acquire(); 
+        this.estado = EstadoProceso.EJECUCION;
+
+        while (instruccionesRestantes > 0 && this.estado == EstadoProceso.EJECUCION) {
+            // SIMPLIFICACIÓN: Una instrucción por ciclo
+            instruccionesRestantes--;
+            programCounter++; // PC incrementa una unidad
+            registroA++; 
+            contadorCiclos++;
+
+            this.registroInstruccion = (tipo == TipoBound.CPU_BOUND) ? 
+                                    "CALCULA" : 
+                                    "PROCESA";
+
+            // Verificar si se genera la excepción de E/S
+            if (tipo == TipoBound.I_O_BOUND && contadorCiclos >= ciclosParaInterrupcion) {
+                this.registroInstruccion = "IO_EXCEPTION";
+                this.estado = EstadoProceso.BLOQUEADO; // Marca el estado para el SO
+                break; 
+            }
+
+            // Pausa mínima para que el Simulador pueda chequear y expropiar
+            Thread.sleep(1); 
+        }
+
+    } catch (InterruptedException e) {
+        // Hilo interrumpido por el Kernel (Expropiación o fin de Quantum)
+    } finally {
+        cpuSemaphore.release();
+    }
     }
 
     public void mostrarPCB() {
-        // Lógica de visualización se añadirá en una etapa posterior
+        String ioInfo = "";
+    if (tipo == TipoBound.I_O_BOUND) {
+        ioInfo = String.format(" | E/S: %d/%d", contadorIOCiclos, ciclosParaSatisfacerIO);
+    }
+
+    System.out.printf("   [PCB %d - %s] Est: %s, Pri: %d, PC: %d, IR: %s, R_A: %d | Rest: %d%s%n", 
+        id, 
+        nombre, 
+        estado, 
+        prioridad,
+        programCounter, 
+        registroInstruccion,
+        registroA,
+        instruccionesRestantes, 
+        ioInfo
+    );
     }
 }
 
