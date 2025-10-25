@@ -8,10 +8,10 @@ import java.io.FileReader;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+
 import so_operativos.EstadoProceso;
-
-
-
 
 
 public class Simulador {
@@ -29,27 +29,29 @@ public class Simulador {
     private int terminadosCount;
     private static final int INITIAL_CAPACITY = 10;
 
-    private Proceso procesoActual;
-    private transient Thread procesoThread; // transient: no se guarda directamente
+    public Proceso procesoActual;
+    private transient Thread procesoThread;
 
     private long tiempoSimulacion;
     private int ciclosQuantum;
-    private final transient Semaphore cpuSemaphore; // transient: no se guarda
+    private final transient Semaphore cpuSemaphore;
 
     private static final int UMBRAL_PROCESOS_MEMORIA = 5;
-
-    // Nombre del archivo de estado
     private static final String ESTADO_FILE = "sim_estado.txt";
 
+    private long tiempoInicioSimulacionReal;
+    private long tiempoTotalCpuOcupado;
+    private long tiempoInicioUsoCpuActual;
+    private List<Proceso> listaProcesosCompletados;
 
-    // Getters requeridos por Main.java
     public Planificador getPlanificador() { return this.planificador; }
     public ConfiguracionSimulacion getConfig() { return this.config; }
 
     public Simulador(ConfiguracionSimulacion config, Planificador planificadorInicial) {
+        Logger.init();
+        Logger.log("Inicializando Simulador...");
+
         this.config = config;
-        // No establecer planificador aquí si vamos a cargarlo
-        // this.planificador = planificador;
 
         this.colaListos = new CustomQueue();
         this.colaListosSuspendidos = new CustomQueue();
@@ -58,57 +60,57 @@ public class Simulador {
         this.mapaProcesosBloqueados = new ConcurrentHashMap<>();
         this.procesosTerminadosArray = new Proceso[INITIAL_CAPACITY];
         this.terminadosCount = 0;
+
         this.procesoActual = null;
         this.procesoThread = null;
         this.tiempoSimulacion = 0;
         this.ciclosQuantum = 0;
         this.cpuSemaphore = new Semaphore(1);
 
-        // Intenta cargar el estado al iniciar, si falla, usa el planificador inicial
-         if (!cargarEstado()) {
-             System.out.println("No se encontró archivo de estado o falló la carga. Iniciando simulación desde cero.");
-             this.planificador = planificadorInicial; // Usa el planificador por defecto
-             // Podrías añadir procesos de ejemplo aquí si quieres que existan al iniciar sin archivo
-             /*
-             agregarProceso(new Proceso("P1-ALTA_PRIO", 500, 1));
-             agregarProceso(new Proceso("P2-IO_LOW", 300, 8, 50, 150));
-             agregarProceso(new Proceso("P3-SJF_SHORT", 200, 5));
-             agregarProceso(new Proceso("P4-IO_MED", 800, 5, 20, 100));
-             */
-         } else {
-             System.out.println("Estado de la simulación cargado exitosamente desde " + ESTADO_FILE);
-             // Asignar semáforo a todos los procesos cargados
-              asignarSemaforoAProcesos();
-              // Reiniciar hilos necesarios (especialmente los de E/S bloqueados)
-              reiniciarHilosPostCarga();
-         }
+        this.tiempoInicioSimulacionReal = System.currentTimeMillis();
+        this.tiempoTotalCpuOcupado = 0;
+        this.tiempoInicioUsoCpuActual = 0;
+        this.listaProcesosCompletados = new ArrayList<>();
+
+        if (!cargarEstado()) {
+            Logger.log("No se cargó estado previo. Iniciando simulación nueva.");
+            this.planificador = planificadorInicial;
+        } else {
+            Logger.log("Estado cargado desde " + ESTADO_FILE);
+            asignarSemaforoAProcesos();
+            reiniciarHilosPostCarga();
+             if (procesoActual != null && procesoActual.getEstado() == EstadoProceso.EJECUCION) {
+                tiempoInicioUsoCpuActual = System.currentTimeMillis();
+             }
+        }
+         Logger.log("Simulador listo. Planificador: " + (this.planificador != null ? this.planificador.getNombre() : "Ninguno"));
     }
 
     public void setPlanificador(Planificador planificador) {
+        Planificador anterior = this.planificador;
         this.planificador = planificador;
-        System.out.println("✅ Política de planificación cambiada a: " + planificador.getNombre());
+        Logger.log("Cambio de Planificador: "
+                + (anterior != null ? anterior.getNombre() : "Ninguno") + " -> "
+                + (planificador != null ? planificador.getNombre() : "Ninguno"));
         reordenarColaListos(null);
     }
 
     public void agregarProceso(Proceso proceso) {
         proceso.setCpuSemaphore(this.cpuSemaphore);
+        Logger.log("Solicitud para agregar Proceso " + proceso.getId() + " (" + proceso.getNombre() + ")");
         if (colaListos.size() + mapaProcesosBloqueados.size() < UMBRAL_PROCESOS_MEMORIA) {
              colaListos.add(proceso);
              proceso.setEstado(EstadoProceso.LISTO);
-             System.out.println("➡️ Proceso " + proceso.getNombre() + " agregado a LISTO.");
              reordenarColaListos(proceso);
         } else {
             colaListosSuspendidos.add(proceso);
             proceso.setEstado(EstadoProceso.SUSPENDIDO_LISTO);
-            System.out.println("⏳ Proceso " + proceso.getNombre() + " agregado a SUSPENDIDO_LISTO (Memoria llena).");
         }
-         revisarYSuspenderSiNecesario(); // Revisar si este nuevo proceso fuerza a suspender otro
+        revisarYSuspenderSiNecesario();
     }
 
     private void revisarYSuspenderSiNecesario() {
          while (colaListos.size() + mapaProcesosBloqueados.size() > UMBRAL_PROCESOS_MEMORIA) {
-             // Decide a quién suspender: ¿Listo o Bloqueado?
-             // Estrategia simple: si hay listos, suspende al de menor prioridad. Si no, suspende al bloqueado de menor prioridad.
              Proceso aSuspender = null;
              EstadoProceso nuevoEstado = null;
              CustomQueue origen = null;
@@ -118,31 +120,30 @@ public class Simulador {
                  origen = colaListos;
                  nuevoEstado = EstadoProceso.SUSPENDIDO_LISTO;
              } else if (!mapaProcesosBloqueados.isEmpty()) {
-                 // Buscar en mapaProcesosBloqueados (necesita iterar o método auxiliar)
                  aSuspender = buscarProcesoMenosPrioritarioEnMapa(mapaProcesosBloqueados);
-                 origen = null; // Indicar que viene del mapa
+                 origen = null;
                  nuevoEstado = EstadoProceso.SUSPENDIDO_BLOQUEADO;
              }
 
              if (aSuspender != null) {
+                 Logger.log("SUSPENSIÓN: Proceso " + aSuspender.getId() + " (" + aSuspender.getNombre() + ") por memoria llena.");
                  if (origen == colaListos) {
                     colaListos.remove(aSuspender);
                     aSuspender.setEstado(nuevoEstado);
                     colaListosSuspendidos.add(aSuspender);
-                    System.out.println("⚠️ MEMORIA: Proceso " + aSuspender.getNombre() + " suspendido (LISTO -> SUSP_LISTO).");
-                 } else { // Viene de bloqueado
+                 } else {
                     mapaProcesosBloqueados.remove(aSuspender.getId());
-                    // Interrumpir su hilo de E/S si está activo
                     Thread hiloExcepcion = procesosEnExcepcion.remove(aSuspender.getId());
                     if (hiloExcepcion != null && hiloExcepcion.isAlive()) {
                         hiloExcepcion.interrupt();
+                        Logger.log("   -> Hilo E/S para " + aSuspender.getId() + " interrumpido por suspensión.");
                     }
                     aSuspender.setEstado(nuevoEstado);
                     colaBloqueadosSuspendidos.add(aSuspender);
-                    System.out.println("⚠️ MEMORIA: Proceso " + aSuspender.getNombre() + " suspendido (BLOQUEADO -> SUSP_BLOQ).");
                  }
              } else {
-                 break; // No se pudo encontrar proceso para suspender
+                 Logger.log("Advertencia: Se necesita suspender pero no se encontró candidato (Listo/Bloq vacíos?).");
+                 break;
              }
          }
     }
@@ -163,17 +164,16 @@ public class Simulador {
              else if (!colaBloqueadosSuspendidos.isEmpty()) {
                   aReanudar = buscarProcesoMasPrioritario(colaBloqueadosSuspendidos);
                   if (aReanudar != null) {
-                     colaBloqueadosSuspendidos.remove(aReanudar);
-                     estadoDestino = EstadoProceso.BLOQUEADO;
-                     // Ponerlo en el mapa y reiniciar su hilo de E/S
-                     mapaProcesosBloqueados.put(aReanudar.getId(), aReanudar);
-                     reanudarManejadorExcepcion(aReanudar); // Inicia el hilo de E/S
+                      colaBloqueadosSuspendidos.remove(aReanudar);
+                      estadoDestino = EstadoProceso.BLOQUEADO;
+                      mapaProcesosBloqueados.put(aReanudar.getId(), aReanudar);
+                      reanudarManejadorExcepcion(aReanudar);
                   }
              }
 
              if (aReanudar != null) {
+                 Logger.log("REANUDACIÓN: Proceso " + aReanudar.getId() + " (" + aReanudar.getNombre() + ") reanudado a " + estadoDestino + ".");
                  aReanudar.setEstado(estadoDestino);
-                 System.out.println("⭐ MEMORIA: Proceso " + aReanudar.getNombre() + " reanudado a " + estadoDestino + ".");
                  if (estadoDestino == EstadoProceso.LISTO) {
                     reordenarColaListos(aReanudar);
                  }
@@ -196,14 +196,14 @@ public class Simulador {
     }
 
      private Proceso buscarProcesoMenosPrioritarioEnMapa(ConcurrentHashMap<Integer, Proceso> map) {
-         if (map.isEmpty()) return null;
-         Proceso peor = null;
-         for (Proceso p : map.values()) {
-              if (peor == null || p.getPrioridad() >= peor.getPrioridad()) {
-                  peor = p;
-              }
-         }
-         return peor;
+        if (map.isEmpty()) return null;
+        Proceso peor = null;
+        for (Proceso p : map.values()) {
+             if (peor == null || p.getPrioridad() >= peor.getPrioridad()) {
+                 peor = p;
+             }
+        }
+        return peor;
      }
 
     private Proceso buscarProcesoMasPrioritario(CustomQueue queue) {
@@ -220,91 +220,111 @@ public class Simulador {
 
     private void reanudarManejadorExcepcion(Proceso proceso) {
         if (proceso.getEstado() != EstadoProceso.BLOQUEADO) {
-            proceso.setEstado(EstadoProceso.BLOQUEADO); // Asegurar estado
+            proceso.setEstado(EstadoProceso.BLOQUEADO);
         }
-        System.out.println("   [Simulador] Reanudando E/S para " + proceso.getNombre() + " desde ciclo " + proceso.getContadorIOCiclos());
-        ManejadorExcepcion handler = new ManejadorExcepcion(
-            proceso,
-            colaListos, // Al terminar E/S, vuelve a LISTO
-            config.getDuracionCicloMs()
-            // El manejador ahora lee el contador inicial del proceso
-        );
+        Logger.log("Reiniciando ManejadorExcepcion para Proceso " + proceso.getId() + " (E/S restante).");
+        ManejadorExcepcion handler = new ManejadorExcepcion(proceso, colaListos, config.getDuracionCicloMs());
         Thread handlerThread = new Thread(handler, "Excepción-" + proceso.getId() + "-Reanudado");
         handlerThread.start();
         procesosEnExcepcion.put(proceso.getId(), handlerThread);
     }
 
     private void reordenarColaListos(Proceso nuevoProceso) {
-        // ... (código sin cambios) ...
         if (planificador instanceof PlanificadorFCFS || planificador instanceof PlanificadorRoundRobin) return;
-
         Proceso[] lista = colaListos.toArray();
         int length = colaListos.size();
+        if (length <= 1) return;
 
+        boolean swapped;
         for (int i = 0; i < length - 1; i++) {
+            swapped = false;
             for (int j = 0; j < length - 1 - i; j++) {
-                boolean swap = false;
+                boolean swapCondition = false;
                 Proceso p1 = lista[j];
                 Proceso p2 = lista[j+1];
 
                 if (planificador instanceof PlanificadorSJF || planificador instanceof PlanificadorSRT) {
-                    if (p1.getInstruccionesRestantes() > p2.getInstruccionesRestantes()) {
-                        swap = true;
-                    }
-                } else { // Prioridad
-                    if (p1.getPrioridad() > p2.getPrioridad()) {
-                        swap = true;
-                    }
+                    if (p1.getInstruccionesRestantes() > p2.getInstruccionesRestantes()) swapCondition = true;
+                } else {
+                    if (p1.getPrioridad() > p2.getPrioridad()) swapCondition = true;
                 }
 
-                if (swap) {
+                if (swapCondition) {
                     Proceso temp = lista[j];
                     lista[j] = lista[j+1];
                     lista[j+1] = temp;
+                    swapped = true;
                 }
             }
+             if (!swapped) break;
         }
         colaListos.rebuildFrom(lista, length);
     }
 
     public boolean quedanProcesos() {
         return !colaListos.isEmpty() || procesoActual != null || !procesosEnExcepcion.isEmpty()
-               || !colaListosSuspendidos.isEmpty() || !colaBloqueadosSuspendidos.isEmpty();
+                || !colaListosSuspendidos.isEmpty() || !colaBloqueadosSuspendidos.isEmpty();
     }
 
     public void ejecutarCicloSimulacion() {
-        // ... (código sin cambios hasta el final) ...
+        long inicioCicloReal = System.currentTimeMillis();
         tiempoSimulacion += config.getDuracionCicloMs();
-        System.out.println("\n--- Ciclo de Simulación @ " + tiempoSimulacion + "ms ---");
+        Logger.log("Inicio Ciclo " + (tiempoSimulacion / config.getDuracionCicloMs()) + " @ Tiempo Simulado " + tiempoSimulacion + "ms");
+
+        if (procesoActual != null && tiempoInicioUsoCpuActual > 0) {
+            tiempoTotalCpuOcupado += (inicioCicloReal - tiempoInicioUsoCpuActual);
+            tiempoInicioUsoCpuActual = 0;
+        }
 
         manejarExcepciones();
         comprobarExpropiacion();
-
         revisarYSuspenderSiNecesario();
         revisarYReanudarSiNecesario();
 
         if (procesoActual == null) {
+             Logger.log("CPU Idle. Intentando planificar...");
             planificarSiguiente();
         } else {
+             tiempoInicioUsoCpuActual = inicioCicloReal;
             manejarQuantum();
         }
 
         chequearEstadoEjecucion();
         mostrarEstado();
 
-        try {
-            Thread.sleep(config.getDuracionCicloMs());
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+        long finCicloLogicoReal = System.currentTimeMillis();
+        long duracionLogica = finCicloLogicoReal - inicioCicloReal;
+        long tiempoDormir = config.getDuracionCicloMs() - duracionLogica;
+
+        if (tiempoDormir > 0) {
+            try {
+                Thread.sleep(tiempoDormir);
+            } catch (InterruptedException e) {
+                Logger.log("WARN: Sleep del ciclo principal interrumpido.");
+                Thread.currentThread().interrupt();
+            }
+        } else {
         }
+         if (procesoActual != null && tiempoInicioUsoCpuActual > 0) {
+            long tiempoRealFinCiclo = System.currentTimeMillis();
+             tiempoTotalCpuOcupado += (tiempoRealFinCiclo - inicioCicloReal);
+             tiempoInicioUsoCpuActual = tiempoRealFinCiclo;
+         } else {
+             tiempoInicioUsoCpuActual = 0;
+         }
+
     }
 
     private void manejarExcepciones() {
         procesosEnExcepcion.entrySet().removeIf(entry -> {
             if (!entry.getValue().isAlive()) {
-                 // El proceso ya habrá sido movido a LISTO por el ManejadorExcepcion
-                 // Solo necesitamos quitarlo del mapa de bloqueados aquí
-                mapaProcesosBloqueados.remove(entry.getKey());
+                Proceso p = mapaProcesosBloqueados.remove(entry.getKey());
+                if (p != null) {
+                    Logger.log("Hilo E/S para Proceso " + p.getId() + " terminado. Proceso movido a LISTO.");
+                    revisarYReanudarSiNecesario();
+                } else {
+                     Logger.log("WARN: Hilo E/S para ID " + entry.getKey() + " terminado, pero proceso no encontrado en mapa Bloqueados.");
+                }
                 return true;
             }
             return false;
@@ -315,50 +335,46 @@ public class Simulador {
         if (procesoActual == null) return;
 
         if (procesoActual.haTerminado()) {
-            procesoActual.setEstado(EstadoProceso.TERMINADO);
+            Proceso terminado = procesoActual;
+
+            terminado.setEstado(EstadoProceso.TERMINADO);
+            Logger.log("PROCESO TERMINADO: ID=" + terminado.getId() + ", Nombre=" + terminado.getNombre() + ", Tiempo Retorno=" + terminado.getTiempoRetorno() + "ms");
+
+            listaProcesosCompletados.add(terminado);
 
             if (terminadosCount >= procesosTerminadosArray.length) {
                 Proceso[] newArray = new Proceso[procesosTerminadosArray.length * 2];
-                 for (int i = 0; i < terminadosCount; i++) {
-                     newArray[i] = procesosTerminadosArray[i];
-                 }
+                 for (int i = 0; i < terminadosCount; i++) newArray[i] = procesosTerminadosArray[i];
                 procesosTerminadosArray = newArray;
             }
-            procesosTerminadosArray[terminadosCount++] = procesoActual;
+            procesosTerminadosArray[terminadosCount++] = terminado;
 
             if (procesoThread != null) procesoThread.interrupt();
-            Proceso terminado = procesoActual;
             procesoActual = null;
             procesoThread = null;
-            System.out.println("🛑 Proceso " + terminado.getNombre() + " terminó.");
 
             revisarYReanudarSiNecesario();
 
         } else if (procesoActual.getEstado() == EstadoProceso.BLOQUEADO) {
-            if (procesoThread != null) procesoThread.interrupt();
-
              Proceso bloqueado = procesoActual;
+             if (procesoThread != null) procesoThread.interrupt();
              procesoActual = null;
              procesoThread = null;
 
-             System.out.println("🚨 EXCEPCIÓN: " + bloqueado.getNombre() + " genera E/S.");
+             Logger.log("E/S Requerida: Proceso " + bloqueado.getId() + " (" + bloqueado.getNombre() + ")");
 
              if (colaListos.size() + mapaProcesosBloqueados.size() + 1 <= UMBRAL_PROCESOS_MEMORIA) {
                  bloqueado.setEstado(EstadoProceso.BLOQUEADO);
                  mapaProcesosBloqueados.put(bloqueado.getId(), bloqueado);
-                 ManejadorExcepcion handler = new ManejadorExcepcion(
-                     bloqueado,
-                     colaListos,
-                     config.getDuracionCicloMs()
-                 );
+                 ManejadorExcepcion handler = new ManejadorExcepcion(bloqueado, colaListos, config.getDuracionCicloMs());
                  Thread handlerThread = new Thread(handler, "Excepción-" + bloqueado.getId());
                  handlerThread.start();
                  procesosEnExcepcion.put(bloqueado.getId(), handlerThread);
-                 System.out.println("   -> Pasa a estado BLOQUEADO.");
+                 Logger.log("   -> Proceso " + bloqueado.getId() + " pasa a BLOQUEADO.");
              } else {
                  bloqueado.setEstado(EstadoProceso.SUSPENDIDO_BLOQUEADO);
                  colaBloqueadosSuspendidos.add(bloqueado);
-                 System.out.println("   -> Pasa a estado SUSPENDIDO_BLOQUEADO (Memoria llena).");
+                 Logger.log("   -> Proceso " + bloqueado.getId() + " pasa a SUSPENDIDO_BLOQUEADO (Memoria llena).");
              }
              revisarYReanudarSiNecesario();
              revisarYSuspenderSiNecesario();
@@ -366,12 +382,9 @@ public class Simulador {
     }
 
     private void comprobarExpropiacion() {
-        // ... (código sin cambios) ...
         if (procesoActual == null || colaListos.isEmpty()) return;
-
         boolean expropiar = false;
         Proceso candidato = colaListos.peek();
-
         if (candidato == null) return;
 
         if (planificador instanceof PlanificadorSRT) {
@@ -381,34 +394,30 @@ public class Simulador {
         }
 
         if (expropiar) {
-            System.out.println("🚨 EXPROPIACIÓN: Proceso " + candidato.getNombre() + " expropia a " + procesoActual.getNombre() + ".");
-            procesoActual.setEstado(EstadoProceso.LISTO);
-            if (procesoThread != null) procesoThread.interrupt();
-
+            Logger.log("EXPROPIACIÓN: Proceso " + candidato.getId() + " (" + candidato.getNombre() + ") expropia a " + procesoActual.getId() + " (" + procesoActual.getNombre() + ").");
             Proceso expropiado = procesoActual;
+            if (procesoThread != null) procesoThread.interrupt();
             procesoActual = null;
             procesoThread = null;
 
+            expropiado.setEstado(EstadoProceso.LISTO);
             colaListos.add(expropiado);
             reordenarColaListos(expropiado);
         }
     }
 
     private void manejarQuantum() {
-        // ... (código sin cambios) ...
         if (procesoActual != null && planificador instanceof PlanificadorRoundRobin rr) {
             ciclosQuantum--;
             if (ciclosQuantum <= 0) {
-                 System.out.println("⏱️ Quantum terminado para " + procesoActual.getNombre() + ". Expropiado a LISTO.");
-                procesoActual.setEstado(EstadoProceso.LISTO);
+                 Logger.log("QUANTUM FIN: Proceso " + procesoActual.getId() + " (" + procesoActual.getNombre() + ") vuelve a LISTO.");
+                 Proceso expropiado = procesoActual;
+                 if (procesoThread != null) procesoThread.interrupt();
+                 procesoActual = null;
+                 procesoThread = null;
 
-                if (procesoThread != null) procesoThread.interrupt();
-
-                Proceso expropiado = procesoActual;
-                procesoActual = null;
-                procesoThread = null;
-
-                colaListos.add(expropiado);
+                 expropiado.setEstado(EstadoProceso.LISTO);
+                 colaListos.add(expropiado);
 
                  revisarYSuspenderSiNecesario();
                  revisarYReanudarSiNecesario();
@@ -417,34 +426,36 @@ public class Simulador {
     }
 
     private void planificarSiguiente() {
-        // ... (código sin cambios) ...
         if (procesoActual == null && !colaListos.isEmpty()) {
-            Proceso siguienteProceso;
-            siguienteProceso = planificador.seleccionarSiguiente(colaListos);
+            Proceso siguienteProceso = planificador.seleccionarSiguiente(colaListos);
 
             if (siguienteProceso != null) {
                 procesoActual = siguienteProceso;
+                Logger.log("CONTEXT SWITCH: Proceso " + procesoActual.getId() + " (" + procesoActual.getNombre() + ") seleccionado para ejecución.");
                 procesoActual.setEstado(EstadoProceso.EJECUCION);
 
                 if (planificador instanceof PlanificadorRoundRobin rr) {
-                    ciclosQuantum = rr.getQuantum();
+                     ciclosQuantum = rr.getQuantum();
+                     Logger.log("   -> Quantum asignado: " + ciclosQuantum);
                 } else {
-                    ciclosQuantum = 0;
+                     ciclosQuantum = 0;
                 }
+
+                tiempoInicioUsoCpuActual = System.currentTimeMillis();
 
                 procesoThread = new Thread(procesoActual, "Proceso-" + procesoActual.getId());
                 procesoThread.start();
-
-                System.out.println("⬅️ CONTEXT SWITCH: Proceso " + procesoActual.getNombre() + " pasa a EJECUCIÓN.");
+            } else {
+                 Logger.log("Planificador no seleccionó proceso (¿cola vacía después de peek?). CPU Idle.");
             }
         }
     }
 
     public void mostrarEstado() {
-        // ... (código sin cambios) ...
         System.out.println("\n--- VISUALIZACIÓN DE ESTADO DEL KERNEL ---");
+        String planificadorNombre = (planificador != null) ? planificador.getNombre() : "N/A";
         System.out.printf("   [SO] Tiempo: %dms | Política: %s | Ciclo: %dms%n",
-                             tiempoSimulacion, planificador.getNombre(), config.getDuracionCicloMs());
+                             tiempoSimulacion, planificadorNombre, config.getDuracionCicloMs());
         System.out.printf("   [Memoria] Procesos Activos (Listo+Bloq): %d/%d%n",
                              colaListos.size() + mapaProcesosBloqueados.size(), UMBRAL_PROCESOS_MEMORIA);
 
@@ -452,7 +463,7 @@ public class Simulador {
         if (procesoActual != null) {
             procesoActual.mostrarPCB();
              if (planificador instanceof PlanificadorRoundRobin) {
-                 System.out.println("      Quantum restante: " + ciclosQuantum);
+                 System.out.println("     Quantum restante: " + ciclosQuantum);
              }
         } else {
             System.out.println("   [IDLE] CPU inactivo.");
@@ -460,67 +471,63 @@ public class Simulador {
 
         System.out.println("\n## Cola de Listos (" + colaListos.size() + " procesos)");
         Proceso[] listosArray = colaListos.toArray();
-        for(Proceso p : listosArray) {
-            p.mostrarPCB();
-        }
+        for(Proceso p : listosArray) p.mostrarPCB();
+        if(listosArray.length == 0) System.out.println("   (Vacía)");
+
 
         System.out.println("\n## Cola de Bloqueados (" + mapaProcesosBloqueados.size() + " procesos / " + procesosEnExcepcion.size() + " hilos E/S)");
         if (mapaProcesosBloqueados.isEmpty()) {
-            System.out.println("   (Sin procesos bloqueados por E/S)");
+            System.out.println("   (Vacía)");
         } else {
-             for (Proceso p : mapaProcesosBloqueados.values()) {
-                  p.mostrarPCB();
-             }
+             for (Proceso p : mapaProcesosBloqueados.values()) p.mostrarPCB();
         }
 
         System.out.println("\n## Cola de Listos Suspendidos (" + colaListosSuspendidos.size() + " procesos)");
         Proceso[] listosSuspendidosArray = colaListosSuspendidos.toArray();
-        for(Proceso p : listosSuspendidosArray) {
-            p.mostrarPCB();
-        }
+        for(Proceso p : listosSuspendidosArray) p.mostrarPCB();
+         if(listosSuspendidosArray.length == 0) System.out.println("   (Vacía)");
 
         System.out.println("\n## Cola de Bloqueados Suspendidos (" + colaBloqueadosSuspendidos.size() + " procesos)");
         Proceso[] bloqueadosSuspendidosArray = colaBloqueadosSuspendidos.toArray();
-        for(Proceso p : bloqueadosSuspendidosArray) {
-            p.mostrarPCB();
-        }
+        for(Proceso p : bloqueadosSuspendidosArray) p.mostrarPCB();
+        if(bloqueadosSuspendidosArray.length == 0) System.out.println("   (Vacía)");
 
-        System.out.println("\n## Procesos Terminados (" + terminadosCount + " procesos)");
-        for(int i = 0; i < terminadosCount; i++) {
-             Proceso p = procesosTerminadosArray[i];
-             System.out.printf("   [ID %d - %s | Pri:%d]%n", p.getId(), p.getNombre(), p.getPrioridad());
+        System.out.println("\n## Procesos Terminados (" + listaProcesosCompletados.size() + " procesos)");
+        for(Proceso p : listaProcesosCompletados) {
+             System.out.printf("   [ID %d - %s | Pri:%d | T.Retorno:%dms | T.Espera:%dms | T.Bloq:%dms]%n",
+                   p.getId(), p.getNombre(), p.getPrioridad(),
+                   p.getTiempoRetorno(), p.getTiempoTotalEsperandoListo(), p.getTiempoTotalBloqueado());
         }
+         if(listaProcesosCompletados.isEmpty()) System.out.println("   (Ninguno)");
 
         System.out.println("----------------------------------------");
     }
 
-    // --- NUEVOS MÉTODOS PARA GUARDAR Y CARGAR ESTADO ---
-
     public boolean guardarEstado() {
-        System.out.println("💾 Guardando estado de la simulación en " + ESTADO_FILE + "...");
+        Logger.log("GUARDANDO ESTADO...");
         try (BufferedWriter writer = new BufferedWriter(new FileWriter(ESTADO_FILE, false))) {
-            // Guardar estado global
             writer.write("TIEMPO," + tiempoSimulacion); writer.newLine();
-            writer.write("PLANIFICADOR," + planificador.getClass().getName()); writer.newLine(); 
+            String planificadorName = (planificador != null) ? planificador.getClass().getName() : "null";
+            writer.write("PLANIFICADOR," + planificadorName); writer.newLine();
             writer.write("PROCESO_ACTUAL," + (procesoActual != null ? procesoActual.getId() : "IDLE")); writer.newLine();
-             writer.write("QUANTUM_RESTANTE," + ciclosQuantum); writer.newLine(); 
-             writer.write("NEXT_ID," + Proceso.getNextId()); writer.newLine(); 
+            writer.write("QUANTUM_RESTANTE," + ciclosQuantum); writer.newLine();
+            writer.write("NEXT_ID," + Proceso.getNextId()); writer.newLine();
 
-            // Guardar colas y arrays
             guardarCola(writer, "LISTO", colaListos);
             guardarCola(writer, "LISTO_SUSP", colaListosSuspendidos);
             guardarCola(writer, "BLOQ_SUSP", colaBloqueadosSuspendidos);
             guardarMapaBloqueados(writer, "BLOQUEADO", mapaProcesosBloqueados);
-            guardarTerminados(writer, "TERMINADO", procesosTerminadosArray, terminadosCount);
+            guardarListaTerminados(writer, "TERMINADO", listaProcesosCompletados);
 
-            System.out.println("💾 Estado guardado exitosamente.");
+
+            Logger.log("Estado guardado exitosamente.");
             return true;
         } catch (IOException e) {
+            Logger.log("ERROR al guardar estado: " + e.getMessage());
             System.err.println("❌ Error al guardar el estado: " + e.getMessage());
             return false;
         }
     }
-
     private void guardarCola(BufferedWriter writer, String prefix, CustomQueue queue) throws IOException {
         Proceso[] array = queue.toArray();
         for (Proceso p : array) {
@@ -529,196 +536,155 @@ public class Simulador {
         }
     }
      private void guardarMapaBloqueados(BufferedWriter writer, String prefix, ConcurrentHashMap<Integer, Proceso> map) throws IOException {
-         for (Proceso p : map.values()) {
+        for (Proceso p : map.values()) {
              writer.write(prefix + "," + p.toStringData());
              writer.newLine();
-         }
+        }
      }
-
-    private void guardarTerminados(BufferedWriter writer, String prefix, Proceso[] array, int count) throws IOException {
-        for (int i = 0; i < count; i++) {
-            writer.write(prefix + "," + array[i].toStringData());
+    private void guardarListaTerminados(BufferedWriter writer, String prefix, List<Proceso> lista) throws IOException {
+        for (Proceso p : lista) {
+            writer.write(prefix + "," + p.toStringData());
             writer.newLine();
         }
     }
-
-
     public boolean cargarEstado() {
-        System.out.println("🔄 Intentando cargar estado desde " + ESTADO_FILE + "...");
-         // Usamos listas temporales porque no podemos modificar las colas mientras iteramos
-         java.util.ArrayList<Proceso> tempListos = new java.util.ArrayList<>();
-         java.util.ArrayList<Proceso> tempListosSusp = new java.util.ArrayList<>();
-         java.util.ArrayList<Proceso> tempBloqueados = new java.util.ArrayList<>();
-         java.util.ArrayList<Proceso> tempBloqSusp = new java.util.ArrayList<>();
-         java.util.ArrayList<Proceso> tempTerminados = new java.util.ArrayList<>();
-         int idProcesoActual = -1; // -1 indica IDLE
+        Logger.log("CARGANDO ESTADO desde " + ESTADO_FILE + "...");
+         List<Proceso> tempListos = new ArrayList<>();
+         List<Proceso> tempListosSusp = new ArrayList<>();
+         List<Proceso> tempBloqueados = new ArrayList<>();
+         List<Proceso> tempBloqSusp = new ArrayList<>();
+         List<Proceso> tempTerminados = new ArrayList<>();
+         int idProcesoActual = -1;
          String nombrePlanificador = null;
          int quantumRestanteCargado = 0;
-         int nextIdCargado = 1; // Valor por defecto si no se encuentra
+         int nextIdCargado = 1;
 
         try (BufferedReader reader = new BufferedReader(new FileReader(ESTADO_FILE))) {
             String line;
-            int maxId = 0; // Para resetear Proceso.nextId
+            int maxId = 0;
 
             while ((line = reader.readLine()) != null) {
-                if (line.trim().isEmpty()) continue; // Ignorar líneas vacías
-
-                String[] parts = line.split(",", 2); // Separar prefijo del resto
-                if (parts.length < 2) continue; // Ignorar líneas mal formadas
-
+                if (line.trim().isEmpty()) continue;
+                String[] parts = line.split(",", 2);
+                if (parts.length < 2) continue;
                 String prefix = parts[0];
                 String data = parts[1];
 
                 try {
-                    switch (prefix) {
-                        case "TIEMPO":
-                            tiempoSimulacion = Long.parseLong(data);
-                            break;
-                        case "PLANIFICADOR":
-                            nombrePlanificador = data;
-                            break;
-                        case "PROCESO_ACTUAL":
-                            if (!data.equals("IDLE")) {
-                                idProcesoActual = Integer.parseInt(data);
-                            } else {
-                                idProcesoActual = -1;
-                            }
-                            break;
-                         case "QUANTUM_RESTANTE":
-                             quantumRestanteCargado = Integer.parseInt(data);
+                     switch (prefix) {
+                         case "TIEMPO": tiempoSimulacion = Long.parseLong(data); break;
+                         case "PLANIFICADOR": nombrePlanificador = data.equals("null") ? null : data; break;
+                         case "PROCESO_ACTUAL": idProcesoActual = data.equals("IDLE") ? -1 : Integer.parseInt(data); break;
+                         case "QUANTUM_RESTANTE": quantumRestanteCargado = Integer.parseInt(data); break;
+                         case "NEXT_ID": nextIdCargado = Integer.parseInt(data); break;
+                         case "LISTO": case "BLOQUEADO": case "LISTO_SUSP":
+                         case "BLOQ_SUSP": case "TERMINADO":
+                             Proceso p = Proceso.fromStringData(data);
+                             if (p.getId() > maxId) maxId = p.getId();
+                             switch (prefix) {
+                                 case "LISTO": tempListos.add(p); break;
+                                 case "BLOQUEADO": tempBloqueados.add(p); break;
+                                 case "LISTO_SUSP": tempListosSusp.add(p); break;
+                                 case "BLOQ_SUSP": tempBloqSusp.add(p); break;
+                                 case "TERMINADO": tempTerminados.add(p); break;
+                             }
                              break;
-                         case "NEXT_ID":
-                             nextIdCargado = Integer.parseInt(data);
-                             break;
-                        case "LISTO":
-                        case "BLOQUEADO":
-                        case "LISTO_SUSP":
-                        case "BLOQ_SUSP":
-                        case "TERMINADO":
-                            Proceso p = Proceso.fromStringData(data);
-                            if (p.getId() > maxId) maxId = p.getId(); // Actualizar maxId encontrado
-                            switch (prefix) {
-                                case "LISTO": tempListos.add(p); break;
-                                case "BLOQUEADO": tempBloqueados.add(p); break;
-                                case "LISTO_SUSP": tempListosSusp.add(p); break;
-                                case "BLOQ_SUSP": tempBloqSusp.add(p); break;
-                                case "TERMINADO": tempTerminados.add(p); break;
-                            }
-                            break;
-                        default:
-                            System.err.println("   Prefijo desconocido en archivo de estado: " + prefix);
-                            break;
-                    }
-                } catch (IllegalArgumentException |ArrayIndexOutOfBoundsException | NullPointerException e) {
-                     System.err.println("   Error parseando línea (" + prefix + "): " + line + " | Error: " + e.getMessage());
-                     // Continuar con la siguiente línea si es posible
-                }
-            }
-
-            // --- Reconstruir estado del simulador ---
-            // Resetear estado actual
-            limpiarEstadoSimulador();
-
-             // Establecer el siguiente ID de proceso correctamente
-             Proceso.resetNextId(Math.max(nextIdCargado, maxId + 1));
-
-
-            // Cargar Planificador (Requiere instanciarlo por nombre)
-            if (nombrePlanificador != null) {
-                try {
-                   
-                    if (nombrePlanificador.contains("PlanificadorRoundRobin")) {
-                        
-                         int quantum = Main.DEFAULT_QUANTUM; 
-                        
-                        this.planificador = new PlanificadorRoundRobin(quantum);
-                        this.ciclosQuantum = quantumRestanteCargado; 
-                    } else {
-                         
-                        Class<?> clazz = Class.forName(nombrePlanificador);
-                        this.planificador = (Planificador) clazz.getDeclaredConstructor().newInstance();
-                    }
-                     System.out.println("   Planificador cargado: " + this.planificador.getNombre());
+                         default: Logger.log("WARN: Prefijo desconocido en estado: " + prefix); break;
+                     }
                 } catch (Exception e) {
-                    System.err.println("❌ Error al instanciar el Planificador " + nombrePlanificador + ": " + e.getMessage() + ". Usando FCFS por defecto.");
-                    this.planificador = new PlanificadorFCFS(); // Fallback
+                     Logger.log("ERROR parseando línea (" + prefix + "): " + line + " | Error: " + e.getMessage());
                 }
-            } else {
-                System.err.println("❌ Nombre del planificador no encontrado en el archivo. Usando FCFS por defecto.");
-                this.planificador = new PlanificadorFCFS(); // Fallback si no se encontró
             }
 
+            limpiarEstadoSimulador();
+            Proceso.resetNextId(Math.max(nextIdCargado, maxId + 1));
 
-            // Cargar colas
+             if (nombrePlanificador != null) {
+                 try {
+                     if (nombrePlanificador.contains("PlanificadorRoundRobin")) {
+                         this.planificador = new PlanificadorRoundRobin(Main.DEFAULT_QUANTUM);
+                         this.ciclosQuantum = quantumRestanteCargado;
+                     } else {
+                         Class<?> clazz = Class.forName(nombrePlanificador);
+                         this.planificador = (Planificador) clazz.getDeclaredConstructor().newInstance();
+                     }
+                     Logger.log("   Planificador cargado: " + this.planificador.getNombre());
+                 } catch (Exception e) {
+                     Logger.log("ERROR al instanciar Planificador " + nombrePlanificador + ": " + e.getMessage() + ". Usando FCFS.");
+                     this.planificador = new PlanificadorFCFS();
+                 }
+             } else {
+                  Logger.log("WARN: Planificador no encontrado en estado. Usando FCFS.");
+                 this.planificador = new PlanificadorFCFS();
+             }
+
+
+             
             colaListos.rebuildFrom(tempListos.toArray(new Proceso[0]), tempListos.size());
             colaListosSuspendidos.rebuildFrom(tempListosSusp.toArray(new Proceso[0]), tempListosSusp.size());
             colaBloqueadosSuspendidos.rebuildFrom(tempBloqSusp.toArray(new Proceso[0]), tempBloqSusp.size());
+            for (Proceso p : tempBloqueados) mapaProcesosBloqueados.put(p.getId(), p);
 
-             // Cargar mapa de bloqueados (no tienen hilo aún)
-             for (Proceso p : tempBloqueados) {
-                 mapaProcesosBloqueados.put(p.getId(), p);
+             
+            listaProcesosCompletados.addAll(tempTerminados);
+             
+             terminadosCount = 0;
+             if (listaProcesosCompletados.size() > procesosTerminadosArray.length) {
+                 procesosTerminadosArray = new Proceso[listaProcesosCompletados.size()];
              }
-
-            // Cargar terminados
-            if (tempTerminados.size() > procesosTerminadosArray.length) {
-                 procesosTerminadosArray = new Proceso[tempTerminados.size()]; // Redimensionar si es necesario
-            }
-            terminadosCount = 0;
-            for (Proceso p : tempTerminados) {
-                procesosTerminadosArray[terminadosCount++] = p;
-            }
-
-             // Cargar proceso actual (buscarlo por ID en las listas cargadas)
-             procesoActual = buscarProcesoPorId(idProcesoActual, tempListos, tempBloqueados, tempListosSusp, tempBloqSusp, tempTerminados);
-             if (procesoActual != null) {
-                  // Si el proceso actual estaba LISTO o EJECUCION (al guardar), ponerlo en EJECUCION ahora
-                 // Si estaba BLOQUEADO, se manejará al reiniciar hilos
-                 if(procesoActual.getEstado() == EstadoProceso.LISTO || procesoActual.getEstado() == EstadoProceso.EJECUCION){
-                     procesoActual.setEstado(EstadoProceso.EJECUCION);
-                 }
-                 System.out.println("   Proceso actual cargado: ID " + procesoActual.getId());
-             } else if (idProcesoActual != -1) {
-                  System.err.println("   Error: Proceso actual con ID " + idProcesoActual + " no encontrado al cargar.");
+             for(Proceso p : listaProcesosCompletados) {
+                 procesosTerminadosArray[terminadosCount++] = p;
              }
 
 
-            return true; // Carga exitosa (o parcialmente exitosa)
+             
+              procesoActual = buscarProcesoPorId(idProcesoActual, tempListos, tempBloqueados, tempListosSusp, tempBloqSusp, tempTerminados);
+              if (procesoActual != null) {
+                   if(procesoActual.getEstado() == EstadoProceso.LISTO || procesoActual.getEstado() == EstadoProceso.EJECUCION){
+                       procesoActual.setEstado(EstadoProceso.EJECUCION);
+                       
+                       colaListos.remove(procesoActual);
+                   } else if (procesoActual.getEstado() == EstadoProceso.BLOQUEADO) {
+                       
+                   } else {
+                       Logger.log("WARN: Proceso actual cargado (" + procesoActual.getId() + ") estaba en estado " + procesoActual.getEstado() + ". CPU queda IDLE.");
+                       procesoActual = null;
+                   }
+                  Logger.log("   Proceso actual cargado: ID " + (procesoActual != null ? procesoActual.getId() : "IDLE"));
+              } else if (idProcesoActual != -1) {
+                   Logger.log("ERROR: Proceso actual ID " + idProcesoActual + " no encontrado.");
+              }
+
+            Logger.log("Carga de estado completada.");
+            return true;
 
         } catch (IOException e) {
-            System.err.println("❌ Error al leer el archivo de estado " + ESTADO_FILE + ": " + e.getMessage());
-            return false; 
+            Logger.log("ERROR al leer archivo de estado " + ESTADO_FILE + ": " + e.getMessage());
+            return false;
         } catch (Exception e) {
-             System.err.println("❌ Error inesperado durante la carga del estado: " + e.getMessage());
-             e.printStackTrace(); 
-             return false; 
+             Logger.log("ERROR inesperado durante carga: " + e.getMessage());
+             e.printStackTrace();
+             return false;
         }
     }
-
-   
-     private Proceso buscarProcesoPorId(int id, java.util.List<Proceso>... listas) {
-         if (id == -1) return null;
-         for (java.util.List<Proceso> lista : listas) {
+    private Proceso buscarProcesoPorId(int id, List<Proceso>... listas) {
+        if (id == -1) return null;
+        for (List<Proceso> lista : listas) {
              for (Proceso p : lista) {
                  if (p.getId() == id) {
                      return p;
                  }
              }
+        }
+        
+         if (mapaProcesosBloqueados.containsKey(id)) {
+             return mapaProcesosBloqueados.get(id);
          }
-         return null; // No encontrado
+        return null;
      }
-
-
-  
     private void limpiarEstadoSimulador() {
-         // Detener hilos actuales si existen
-         if (procesoThread != null && procesoThread.isAlive()) {
-             procesoThread.interrupt();
-         }
-         for (Thread t : procesosEnExcepcion.values()) {
-             if (t != null && t.isAlive()) {
-                 t.interrupt();
-             }
-         }
+        if (procesoThread != null && procesoThread.isAlive()) procesoThread.interrupt();
+        for (Thread t : procesosEnExcepcion.values()) if (t != null && t.isAlive()) t.interrupt();
 
         colaListos.rebuildFrom(new Proceso[0], 0);
         colaListosSuspendidos.rebuildFrom(new Proceso[0], 0);
@@ -727,66 +693,119 @@ public class Simulador {
         mapaProcesosBloqueados.clear();
         procesosTerminadosArray = new Proceso[INITIAL_CAPACITY];
         terminadosCount = 0;
+        listaProcesosCompletados.clear();
         procesoActual = null;
         procesoThread = null;
         tiempoSimulacion = 0;
         ciclosQuantum = 0;
-        
-    }
-
-     
-     public void asignarSemaforoAProcesos() {
+        tiempoTotalCpuOcupado = 0;
+        tiempoInicioUsoCpuActual = 0;
+        tiempoInicioSimulacionReal = System.currentTimeMillis();
+     }
+    public void asignarSemaforoAProcesos() {
          asignarSemaforoEnCola(colaListos);
          asignarSemaforoEnCola(colaListosSuspendidos);
          asignarSemaforoEnCola(colaBloqueadosSuspendidos);
-          for(Proceso p : mapaProcesosBloqueados.values()){
-              p.setCpuSemaphore(this.cpuSemaphore);
-          }
-         if (procesoActual != null) {
-             procesoActual.setCpuSemaphore(this.cpuSemaphore);
-         }
-         // Terminados no necesitan semáforo
+         for(Proceso p : mapaProcesosBloqueados.values()) p.setCpuSemaphore(this.cpuSemaphore);
+        if (procesoActual != null) procesoActual.setCpuSemaphore(this.cpuSemaphore);
+        
      }
      private void asignarSemaforoEnCola(CustomQueue queue) {
          Proceso[] array = queue.toArray();
-         for (Proceso p : array) {
-             p.setCpuSemaphore(this.cpuSemaphore);
+         for (Proceso p : array) p.setCpuSemaphore(this.cpuSemaphore);
+     }
+    public void reiniciarHilosPostCarga() {
+         Logger.log("Reiniciando hilos post-carga...");
+         ConcurrentHashMap<Integer, Proceso> copiaMapaBloqueados = new ConcurrentHashMap<>(mapaProcesosBloqueados);
+         for (Proceso p : copiaMapaBloqueados.values()) {
+             if (p.getEstado() == EstadoProceso.BLOQUEADO) {
+                 reanudarManejadorExcepcion(p);
+             }
+         }
+        if (procesoActual != null && procesoActual.getEstado() == EstadoProceso.EJECUCION) {
+             Logger.log("   -> Reiniciando hilo CPU para Proceso " + procesoActual.getId());
+             tiempoInicioUsoCpuActual = System.currentTimeMillis();
+             procesoThread = new Thread(procesoActual, "Proceso-" + procesoActual.getId() + "-Reanudado");
+             procesoThread.start();
          }
      }
 
-   
-     public void reiniciarHilosPostCarga() {
-          // Reiniciar hilos de procesos bloqueados (E/S)
-         System.out.println("   Reiniciando hilos de E/S...");
-         
-          ConcurrentHashMap<Integer, Proceso> copiaMapaBloqueados = new ConcurrentHashMap<>(mapaProcesosBloqueados);
-          for (Proceso p : copiaMapaBloqueados.values()) {
-              if (p.getEstado() == EstadoProceso.BLOQUEADO) {
-                  reanudarManejadorExcepcion(p);
-                  System.out.println("      -> Hilo E/S para Proceso " + p.getId() + " reiniciado.");
-              } else {
-                
-                   System.err.println("      -> Advertencia: Proceso " + p.getId() + " en mapa de bloqueados pero con estado " + p.getEstado());
+    public void calcularYMostrarMetricas() {
+        if (listaProcesosCompletados.isEmpty()) {
+            System.out.println("\n--- MÉTRICAS DE RENDIMIENTO ---");
+            System.out.println("   No hay procesos completados para calcular métricas.");
+            return;
+        }
+
+        long tiempoTotalSimulacionReal = System.currentTimeMillis() - tiempoInicioSimulacionReal;
+        if (tiempoTotalSimulacionReal == 0) tiempoTotalSimulacionReal = 1;
+
+        
+        double tiempoTotalSegundos = tiempoTotalSimulacionReal / 1000.0;
+        double throughput = (tiempoTotalSegundos > 0) ? listaProcesosCompletados.size() / tiempoTotalSegundos : 0;
+
+        
+        if (procesoActual != null && tiempoInicioUsoCpuActual > 0) {
+             tiempoTotalCpuOcupado += (System.currentTimeMillis() - tiempoInicioUsoCpuActual);
+        }
+        double utilizacionCpu = (double) tiempoTotalCpuOcupado * 100.0 / tiempoTotalSimulacionReal;
+
+        
+        long sumaTiemposRespuesta = 0;
+        long sumaTiemposRetorno = 0;
+        long sumaTiemposEspera = 0;
+        int countParaPromedio = 0;
+
+        for (Proceso p : listaProcesosCompletados) {
+            long tRetorno = p.getTiempoRetorno();
+            if (tRetorno >= 0) {
+                 
+                 long tRespuesta = p.getTiempoRespuesta();
+                 long tEspera = p.getTiempoTotalEsperandoListo();
+
+                 sumaTiemposRetorno += tRetorno;
+                 sumaTiemposRespuesta += tRespuesta;
+                 sumaTiemposEspera += tEspera;
+                 countParaPromedio++;
+            }
+        }
+
+        double tiempoRespuestaPromedio = (countParaPromedio > 0) ? (double) sumaTiemposRespuesta / countParaPromedio : 0;
+        double tiempoRetornoPromedio = (countParaPromedio > 0) ? (double) sumaTiemposRetorno / countParaPromedio : 0;
+        double tiempoEsperaPromedio = (countParaPromedio > 0) ? (double) sumaTiemposEspera / countParaPromedio : 0;
+
+
+        System.out.println("\n--- MÉTRICAS DE RENDIMIENTO ---");
+        System.out.printf("   Tiempo Total Simulación (Real): %.3f s%n", tiempoTotalSegundos);
+        System.out.printf("   Procesos Completados: %d%n", listaProcesosCompletados.size());
+        System.out.printf("   Throughput: %.3f procesos/s%n", throughput);
+        System.out.printf("   Tiempo Total CPU Ocupado: %d ms%n", tiempoTotalCpuOcupado);
+        System.out.printf("   Utilización de CPU: %.2f%%%n", utilizacionCpu);
+        System.out.printf("   Tiempo de Retorno Promedio: %.2f ms%n", tiempoRetornoPromedio);
+        System.out.printf("   Tiempo de Respuesta Promedio (aprox): %.2f ms%n", tiempoRespuestaPromedio);
+        System.out.printf("   Tiempo de Espera Promedio (en Listo/SuspListo): %.2f ms%n", tiempoEsperaPromedio);
+        System.out.println("---------------------------------");
+
+        
+         Logger.log(String.format("METRICAS FINALES: Procesos=%d, Throughput=%.3f p/s, CPU Util=%.2f%%, T.RetornoAvg=%.2fms, T.RespAvg=M.2fms, T.EsperaAvg=%.2fms",
+                 listaProcesosCompletados.size(), throughput, utilizacionCpu, tiempoRetornoPromedio, tiempoRespuestaPromedio, tiempoEsperaPromedio));
+    }
+
+
+     public void cerrarSimulador() {
+         Logger.log("Cerrando Simulador...");
+          if (procesoThread != null && procesoThread.isAlive()) {
+              procesoThread.interrupt();
+          }
+          for (Thread t : procesosEnExcepcion.values()) {
+              if (t != null && t.isAlive()) {
+                  t.interrupt();
               }
           }
-
          
-         if (procesoActual != null && procesoActual.getEstado() == EstadoProceso.EJECUCION) {
-              System.out.println("   Reiniciando hilo de CPU para Proceso " + procesoActual.getId() + "...");
-              procesoThread = new Thread(procesoActual, "Proceso-" + procesoActual.getId() + "-Reanudado");
-              procesoThread.start();
-               System.out.println("      -> Hilo CPU para Proceso " + procesoActual.getId() + " reiniciado.");
-          } else if (procesoActual != null) {
-              
-               System.out.println("   Proceso actual cargado (" + procesoActual.getId() + ") no estaba en EJECUCION (Estado: "+ procesoActual.getEstado()+"). CPU queda IDLE.");
-               
-               if(procesoActual.getEstado() != EstadoProceso.TERMINADO) {
-                   
-               }
-               procesoActual = null; // Dejar CPU idle
-          }
+         calcularYMostrarMetricas();
+         Logger.close();
      }
 
-    
 
-} 
+}
