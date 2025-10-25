@@ -3,23 +3,17 @@
  * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
  */
 package so_operativos;
-import java.io.FileWriter; // Necesario para escribir
-import java.io.IOException; // Para manejar errores de archivo
-import java.io.FileReader; // Necesario para leer
-import java.io.BufferedReader; // Para leer líneas
+
+
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.FileReader;
+import java.io.BufferedReader;
 
 /**
  *
  * @author Edgar
  */
-
-package so_operativos;
-
-// Imports añadidos para manejo de archivos
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.FileReader;
-import java.io.BufferedReader;
 
 public class ConfiguracionSimulacion {
     private long duracionCicloMs = 100; // Valor por defecto
