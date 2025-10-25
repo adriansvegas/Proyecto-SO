@@ -13,7 +13,7 @@ public class Proceso implements Runnable {
 
     // Componentes del PCB (PC, IR, Registros, Prioridad)
     private int instruccionesRestantes;
-    private int programCounter;
+    private int programCounter; // PC incrementará una unidad por ciclo
     private String registroInstruccion;
     private int registroA; 
     private final int prioridad;
@@ -22,8 +22,8 @@ public class Proceso implements Runnable {
     private final TipoBound tipo;
     private int ciclosParaInterrupcion;
     private int ciclosParaSatisfacerIO;
-    private int contadorCiclos;
-    private int contadorIOCiclos;
+    private int contadorCiclos; // Ciclos de CPU transcurridos en la ráfaga actual
+    private int contadorIOCiclos; // Ciclos de E/S transcurridos
 
     private Semaphore cpuSemaphore;
 
@@ -43,14 +43,14 @@ public class Proceso implements Runnable {
         this.contadorCiclos = 0;
         this.contadorIOCiclos = 0;
     }
-
-    // Constructor CPU_BOUND (Corregido)
+    
+   // Constructor CPU_BOUND
     public Proceso(String nombre, int totalInstrucciones, int prioridad) {
         this.id = nextId++;
         this.nombre = nombre;
         this.instruccionesRestantes = totalInstrucciones;
         this.prioridad = prioridad;
-        this.tipo = TipoBound.CPU_BOUND;
+        this.tipo = TipoBound.CPU_BOUND; // Se asigna el tipo correcto una sola vez
         this.estado = EstadoProceso.LISTO;
         this.programCounter = 0;
         this.registroInstruccion = "NOP";
@@ -73,12 +73,12 @@ public class Proceso implements Runnable {
     public int getPrioridad() { return prioridad; }
     public TipoBound getTipo() { return tipo; }
     public int getCiclosParaSatisfacerIO() { return ciclosParaSatisfacerIO; }
-
+    
     public void resetContadorCiclos() {
         this.contadorCiclos = 0;
         this.contadorIOCiclos = 0;
     }
-
+    
     public void incrementarContadorCiclosIO() {
         this.contadorIOCiclos++;
     }
@@ -86,59 +86,58 @@ public class Proceso implements Runnable {
     public boolean haTerminado() {
         return instruccionesRestantes <= 0;
     }
-
+    
     @Override
     public void run() {
         try {
-        cpuSemaphore.acquire(); 
-        this.estado = EstadoProceso.EJECUCION;
+            cpuSemaphore.acquire(); 
+            this.estado = EstadoProceso.EJECUCION;
 
-        while (instruccionesRestantes > 0 && this.estado == EstadoProceso.EJECUCION) {
-            // SIMPLIFICACIÓN: Una instrucción por ciclo
-            instruccionesRestantes--;
-            programCounter++; // PC incrementa una unidad
-            registroA++; 
-            contadorCiclos++;
+            while (instruccionesRestantes > 0 && this.estado == EstadoProceso.EJECUCION) {
+                // SIMPLIFICACIÓN: Una instrucción por ciclo
+                instruccionesRestantes--;
+                programCounter++; // PC incrementa una unidad
+                registroA++; 
+                contadorCiclos++;
 
-            this.registroInstruccion = (tipo == TipoBound.CPU_BOUND) ? 
-                                    "CALCULA" : 
-                                    "PROCESA";
+                this.registroInstruccion = (tipo == TipoBound.CPU_BOUND) ? 
+                                           "CALCULA" : 
+                                           "PROCESA";
 
-            // Verificar si se genera la excepción de E/S
-            if (tipo == TipoBound.I_O_BOUND && contadorCiclos >= ciclosParaInterrupcion) {
-                this.registroInstruccion = "IO_EXCEPTION";
-                this.estado = EstadoProceso.BLOQUEADO; // Marca el estado para el SO
-                break; 
+                // Verificar si se genera la excepción de E/S
+                if (tipo == TipoBound.I_O_BOUND && contadorCiclos >= ciclosParaInterrupcion) {
+                    this.registroInstruccion = "IO_EXCEPTION";
+                    this.estado = EstadoProceso.BLOQUEADO; // Marca el estado para el SO
+                    break; 
+                }
+                
+                // Pausa mínima para que el Simulador pueda chequear y expropiar
+                Thread.sleep(1); 
             }
 
-            // Pausa mínima para que el Simulador pueda chequear y expropiar
-            Thread.sleep(1); 
+        } catch (InterruptedException e) {
+            // Hilo interrumpido por el Kernel (Expropiación o fin de Quantum)
+        } finally {
+            cpuSemaphore.release();
         }
-
-    } catch (InterruptedException e) {
-        // Hilo interrumpido por el Kernel (Expropiación o fin de Quantum)
-    } finally {
-        cpuSemaphore.release();
     }
-    }
-
+    
     public void mostrarPCB() {
         String ioInfo = "";
-    if (tipo == TipoBound.I_O_BOUND) {
-        ioInfo = String.format(" | E/S: %d/%d", contadorIOCiclos, ciclosParaSatisfacerIO);
-    }
-
-    System.out.printf("   [PCB %d - %s] Est: %s, Pri: %d, PC: %d, IR: %s, R_A: %d | Rest: %d%s%n", 
-        id, 
-        nombre, 
-        estado, 
-        prioridad,
-        programCounter, 
-        registroInstruccion,
-        registroA,
-        instruccionesRestantes, 
-        ioInfo
-    );
+        if (tipo == TipoBound.I_O_BOUND) {
+            ioInfo = String.format(" | E/S: %d/%d", contadorIOCiclos, ciclosParaSatisfacerIO);
+        }
+        
+        System.out.printf("   [PCB id: %d - %s] Est: %s, Pri: %d, PC: %d, IR: %s, R_A: %d | Rest: %d%s%n", 
+            id, 
+            nombre, 
+            estado, 
+            prioridad,
+            programCounter, 
+            registroInstruccion,
+            registroA,
+            instruccionesRestantes, 
+            ioInfo
+        );
     }
 }
-

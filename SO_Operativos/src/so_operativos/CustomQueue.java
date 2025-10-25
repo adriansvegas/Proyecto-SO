@@ -54,7 +54,7 @@ public class CustomQueue {
     public int size() {
         return size;
     }
-
+    
     /** Convierte la cola en un arreglo de procesos para facilitar la planificación. */
     public Proceso[] toArray() {
         Proceso[] array = new Proceso[size];
@@ -72,14 +72,14 @@ public class CustomQueue {
         head = null;
         tail = null;
         size = 0;
-
+        
         for (int i = 0; i < length; i++) {
             if (array[i] != null) {
                 add(array[i]);
             }
         }
     }
-
+    
     /** Encuentra y remueve un proceso específico (usado por SJF/Prioridad). */
     public synchronized Proceso remove(Proceso target) {
         if (head == null) return null;

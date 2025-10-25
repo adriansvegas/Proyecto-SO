@@ -18,7 +18,7 @@ public class Main {
 
     public static void main(String[] args) {
         ConfiguracionSimulacion config = ConfiguracionSimulacion.cargarConfiguracion();
-
+        
         Planificador planificadorInicial = new PlanificadorFCFS();
         Simulador simulador = new Simulador(config, planificadorInicial);
         Scanner scanner = new Scanner(System.in);
@@ -48,7 +48,7 @@ public class Main {
                     case 2: ejecutarContinuamente(simulador); break;
                     case 3: crearNuevoProceso(simulador, scanner); break;
                     case 4: modificarDuracionCiclo(simulador, scanner); break;
-                    case 5: System.out.println("Opción (Cambiar Planificador) se implementará pronto."); break; // Placeholder
+                    case 5: cambiarPlanificador(simulador, scanner); break;
                     case 0: System.out.println("Saliendo del simulador. ¡Adiós!"); break;
                     default: System.out.println("Opción no válida. Intente de nuevo.");
                 }
@@ -62,7 +62,7 @@ public class Main {
 
         scanner.close();
     }
-
+    
     private static void mostrarMenu(Simulador simulador) {
         System.out.println("\n==================================");
         System.out.println("      SIMULADOR CONCURRENTE       ");
@@ -78,11 +78,11 @@ public class Main {
         System.out.println("0. Salir");
         System.out.print("Seleccione una opción: ");
     }
-
+    
     private static void ejecutarCiclo(Simulador simulador) {
         simulador.ejecutarCicloSimulacion();
     }
-
+    
     private static void ejecutarContinuamente(Simulador simulador) {
         System.out.println("Ejecutando simulación continuamente. Presione CTRL+C para detener...");
         try {
@@ -96,7 +96,7 @@ public class Main {
             simulador.mostrarEstado();
         }
     }
-
+    
     private static void crearNuevoProceso(Simulador simulador, Scanner scanner) {
         System.out.print("Nombre del proceso: ");
         String nombre = scanner.nextLine();
@@ -111,7 +111,7 @@ public class Main {
             }
             scanner.nextLine();
         }
-
+        
         int prioridad = -1;
         while (prioridad < 1 || prioridad > 10) {
             System.out.printf("Prioridad (1=Alta, 10=Baja) [Defecto: %d]: ", DEFAULT_PRIORITY);
@@ -156,53 +156,6 @@ public class Main {
         }
     }
     
-    private static void cambiarPlanificador(Simulador simulador, Scanner scanner) {
-    int quantum = DEFAULT_QUANTUM; 
-
-    System.out.println("\n--- CAMBIAR PLANIFICADOR (6 POLÍTICAS) ---");
-    System.out.println("1. FCFS (No Expropiativo)");
-    System.out.println("2. SJF (No Expropiativo)");
-    System.out.println("3. SRT (SJF Expropiativo)");
-    System.out.println("4. Round Robin (Expropiativo por Quantum)");
-    System.out.println("5. Prioridad (No Expropiativa)");
-    System.out.println("6. Prioridad (Expropiativa)");
-    System.out.print("Seleccione el planificador: ");
-
-    int elec = -1;
-    if (scanner.hasNextInt()) {
-        elec = scanner.nextInt();
-        scanner.nextLine();
-    } else {
-        scanner.nextLine(); 
-        System.out.println("Opción inválida.");
-        return;
-    }
-
-    Planificador nuevoPlanificador;
-    switch (elec) {
-        case 1: nuevoPlanificador = new PlanificadorFCFS(); break;
-        case 2: nuevoPlanificador = new PlanificadorSJF(); break;
-        case 3: nuevoPlanificador = new PlanificadorSRT(); break;
-        case 4:
-            System.out.printf("Ingrese el quantum (ciclos) para Round Robin (Defecto: %d): ", quantum);
-            if (scanner.hasNextInt()) {
-                quantum = scanner.nextInt();
-                scanner.nextLine();
-            } else {
-                scanner.nextLine();
-            }
-            nuevoPlanificador = new PlanificadorRoundRobin(quantum);
-            break;
-        case 5: nuevoPlanificador = new PlanificadorPrioridadNoExpropiativa(); break;
-        case 6: nuevoPlanificador = new PlanificadorPrioridadExpropiativa(); break;
-        default:
-            System.out.println("Opción no reconocida.");
-            return;
-    }
-
-    simulador.setPlanificador(nuevoPlanificador);
-}
-
     private static void modificarDuracionCiclo(Simulador simulador, Scanner scanner) {
         long nuevaDuracion = -1;
         while (nuevaDuracion <= 0) {
@@ -219,5 +172,50 @@ public class Main {
         System.out.println("✅ Duración del ciclo actualizada a " + nuevaDuracion + "ms.");
     }
 
-    // cambiarPlanificador se implementará en la siguiente etapa
+    private static void cambiarPlanificador(Simulador simulador, Scanner scanner) {
+        int quantum = DEFAULT_QUANTUM; 
+        
+        System.out.println("\n--- CAMBIAR PLANIFICADOR (6 POLÍTICAS) ---");
+        System.out.println("1. FCFS (No Expropiativo)");
+        System.out.println("2. SJF (No Expropiativo)");
+        System.out.println("3. SRT (SJF Expropiativo)");
+        System.out.println("4. Round Robin (Expropiativo por Quantum)");
+        System.out.println("5. Prioridad (No Expropiativa)");
+        System.out.println("6. Prioridad (Expropiativa)");
+        System.out.print("Seleccione el planificador: ");
+
+        int elec = -1;
+        if (scanner.hasNextInt()) {
+            elec = scanner.nextInt();
+            scanner.nextLine();
+        } else {
+            scanner.nextLine(); 
+            System.out.println("Opción inválida.");
+            return;
+        }
+        
+        Planificador nuevoPlanificador;
+        switch (elec) {
+            case 1: nuevoPlanificador = new PlanificadorFCFS(); break;
+            case 2: nuevoPlanificador = new PlanificadorSJF(); break;
+            case 3: nuevoPlanificador = new PlanificadorSRT(); break;
+            case 4:
+                System.out.printf("Ingrese el quantum (ciclos) para Round Robin (Defecto: %d): ", quantum);
+                if (scanner.hasNextInt()) {
+                    quantum = scanner.nextInt();
+                    scanner.nextLine();
+                } else {
+                    scanner.nextLine();
+                }
+                nuevoPlanificador = new PlanificadorRoundRobin(quantum);
+                break;
+            case 5: nuevoPlanificador = new PlanificadorPrioridadNoExpropiativa(); break;
+            case 6: nuevoPlanificador = new PlanificadorPrioridadExpropiativa(); break;
+            default:
+                System.out.println("Opción no reconocida.");
+                return;
+        }
+        
+        simulador.setPlanificador(nuevoPlanificador);
+    }
 }
