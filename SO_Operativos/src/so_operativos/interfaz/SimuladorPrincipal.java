@@ -15,6 +15,12 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicBoolean;
 
+// --- INICIO CÓDIGO AÑADIDO ---
+import javax.swing.JFileChooser;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import java.io.File;
+// --- FIN CÓDIGO AÑADIDO ---
+
 import so_operativos.ConfiguracionSimulacion;
 import so_operativos.CustomQueue;
 import so_operativos.EstadoProceso;
@@ -53,7 +59,11 @@ public class SimuladorPrincipal extends JFrame {
 
     // --- Componentes GUI ---
     private GuiOutput consola; // Panel para mostrar logs y eventos
-    private JButton btnEjecutarCiclo, btnEjecutarContinuo, btnDetenerContinuo, btnSalir, btnAgregarProceso, btnGuardarEstado, btnCargarEstado, btnMostrarMetricas;
+    
+    // --- INICIO CÓDIGO MODIFICADO ---
+    private JButton btnEjecutarCiclo, btnEjecutarContinuo, btnDetenerContinuo, btnSalir, btnAgregarProceso, btnGuardarEstado, btnCargarEstado, btnMostrarMetricas, btnResetearSim;
+    // --- FIN CÓDIGO MODIFICADO ---
+
     private JTextField velocidadTextField; // Campo para ingresar la velocidad de simulación
     private JButton btnAplicarVelocidad; // Botón para aplicar la velocidad
     private JComboBox<String> selectorAlgoritmo; // Selector de algoritmo de planificación
@@ -95,7 +105,7 @@ public class SimuladorPrincipal extends JFrame {
 
     /** Configura propiedades básicas de la ventana JFrame. */
     private void configurarVentana() {
-        setTitle("Simulador Planificación SO (Adrián Vegas) - Rediseñado v2");
+        setTitle("Proyecto #1 Simulador Planificador SO");
         setDefaultCloseOperation(JFrame.DO_NOTHING_ON_CLOSE); // Se maneja el cierre manualmente
         setSize(1400, 900);
         setLocationRelativeTo(null);
@@ -169,7 +179,7 @@ public class SimuladorPrincipal extends JFrame {
 
     /** Crea el panel superior con el título de la aplicación. */
     private JPanel crearPanelTitulo() {
-        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER)); panel.setBackground(COLOR_FONDO_PRINCIPAL); panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0)); JLabel titulo = new JLabel("Simulador Planificación SO (Adrián Vegas)"); titulo.setFont(new Font("Segoe UI", Font.BOLD, 24)); titulo.setForeground(COLOR_DETALLES_NARANJA); panel.add(titulo); return panel;
+        JPanel panel = new JPanel(new FlowLayout(FlowLayout.CENTER)); panel.setBackground(COLOR_FONDO_PRINCIPAL); panel.setBorder(BorderFactory.createEmptyBorder(5, 0, 5, 0)); JLabel titulo = new JLabel(" Proyecto #1 Simulador Planificación SO Versión 1.0"); titulo.setFont(new Font("Segoe UI", Font.BOLD, 24)); titulo.setForeground(COLOR_DETALLES_NARANJA); panel.add(titulo); return panel;
     }
 
     /** Crea el panel que muestra la información del estado actual de la CPU. */
@@ -203,7 +213,16 @@ public class SimuladorPrincipal extends JFrame {
         JLabel labelAlgoritmo = new JLabel("Planificador:", SwingConstants.LEFT); estilizarLabel(labelAlgoritmo, COLOR_TEXTO_NORMAL, 12, Font.PLAIN); selectorAlgoritmo = new JComboBox<>(new String[]{ "1. FCFS (No Expropiativo)", "2. SJF (No Expropiativo)", "3. SRT (SJF Expropiativo)", "4. Round Robin (Expropiativo)", "5. Prioridad (No Expropiativa)", "6. Prioridad (Expropiativa)" }); selectorAlgoritmo.setFont(new Font("Segoe UI", Font.PLAIN, 12)); selectorAlgoritmo.setBackground(COLOR_FONDO_SECUNDARIO); selectorAlgoritmo.setForeground(COLOR_TEXTO_NORMAL); gbcCtrl.gridx = 0; gbcCtrl.gridy = 1; gbcCtrl.gridwidth = 1; gbcCtrl.weightx = 0; gbcCtrl.fill = GridBagConstraints.NONE; gbcCtrl.anchor = GridBagConstraints.EAST; panel.add(labelAlgoritmo, gbcCtrl); gbcCtrl.gridx = 1; gbcCtrl.gridy = 1; gbcCtrl.gridwidth = 2; gbcCtrl.weightx = 1; gbcCtrl.fill = GridBagConstraints.HORIZONTAL; gbcCtrl.anchor = GridBagConstraints.WEST; panel.add(selectorAlgoritmo, gbcCtrl);
         JLabel labelVelocidad = new JLabel("Velocidad (ms):", SwingConstants.LEFT); estilizarLabel(labelVelocidad, COLOR_TEXTO_NORMAL, 12, Font.PLAIN); velocidadTextField = new JTextField(String.valueOf(simulador.getConfig().getDuracionCicloMs()), 5); velocidadTextField.setFont(new Font("Consolas", Font.PLAIN, 12)); velocidadTextField.setBackground(COLOR_FONDO_SECUNDARIO); velocidadTextField.setForeground(COLOR_TEXTO_NORMAL); velocidadTextField.setCaretColor(COLOR_DETALLES_VERDE); velocidadTextField.setBorder(BorderFactory.createCompoundBorder( BorderFactory.createLineBorder(COLOR_TEXTO_COMENTARIO), BorderFactory.createEmptyBorder(3, 5, 3, 5) )); btnAplicarVelocidad = crearBotonEstilizado("Aplicar"); btnAplicarVelocidad.setPreferredSize(new Dimension(80, btnAplicarVelocidad.getPreferredSize().height)); btnAplicarVelocidad.setBorder(new CompoundBorder(new LineBorder(COLOR_FONDO_PRINCIPAL), new EmptyBorder(4, 10, 4, 10))); gbcCtrl.gridx = 0; gbcCtrl.gridy = 2; gbcCtrl.gridwidth = 1; gbcCtrl.weightx = 0; gbcCtrl.fill = GridBagConstraints.NONE; gbcCtrl.anchor = GridBagConstraints.EAST; panel.add(labelVelocidad, gbcCtrl); gbcCtrl.gridx = 1; gbcCtrl.gridy = 2; gbcCtrl.gridwidth = 1; gbcCtrl.weightx = 1; gbcCtrl.fill = GridBagConstraints.HORIZONTAL; gbcCtrl.anchor = GridBagConstraints.WEST; panel.add(velocidadTextField, gbcCtrl); gbcCtrl.gridx = 2; gbcCtrl.gridy = 2; gbcCtrl.gridwidth = 1; gbcCtrl.weightx = 0; gbcCtrl.fill = GridBagConstraints.NONE; gbcCtrl.anchor = GridBagConstraints.WEST; panel.add(btnAplicarVelocidad, gbcCtrl);
         btnAgregarProceso = crearBotonEstilizado("Añadir Proceso"); btnGuardarEstado = crearBotonEstilizado("Guardar Estado"); btnCargarEstado = crearBotonEstilizado("Cargar Estado"); gbcCtrl.gridx = 0; gbcCtrl.gridy = 3; gbcCtrl.gridwidth = 1; gbcCtrl.fill = GridBagConstraints.HORIZONTAL; gbcCtrl.anchor = GridBagConstraints.CENTER; panel.add(btnAgregarProceso, gbcCtrl); gbcCtrl.gridx = 1; gbcCtrl.gridy = 3; panel.add(btnGuardarEstado, gbcCtrl); gbcCtrl.gridx = 2; gbcCtrl.gridy = 3; panel.add(btnCargarEstado, gbcCtrl);
-        btnMostrarMetricas = crearBotonEstilizado("Ver Métricas"); btnSalir = crearBotonEstilizado("Salir"); gbcCtrl.gridx = 0; gbcCtrl.gridy = 4; panel.add(btnMostrarMetricas, gbcCtrl); gbcCtrl.gridx = 1; gbcCtrl.gridy = 4; panel.add(new JLabel(""), gbcCtrl); gbcCtrl.gridx = 2; gbcCtrl.gridy = 4; panel.add(btnSalir, gbcCtrl);
+        
+        // --- INICIO CÓDIGO MODIFICADO ---
+        btnMostrarMetricas = crearBotonEstilizado("Ver Métricas");
+        btnResetearSim = crearBotonEstilizado("Resetear Sim"); // <-- AÑADIDO
+        btnSalir = crearBotonEstilizado("Salir");
+        gbcCtrl.gridx = 0; gbcCtrl.gridy = 4; panel.add(btnMostrarMetricas, gbcCtrl);
+        gbcCtrl.gridx = 1; gbcCtrl.gridy = 4; panel.add(btnResetearSim, gbcCtrl); // <-- AÑADIDO
+        gbcCtrl.gridx = 2; gbcCtrl.gridy = 4; panel.add(btnSalir, gbcCtrl);
+        // --- FIN CÓDIGO MODIFICADO ---
+        
         return panel;
     }
 
@@ -229,6 +248,28 @@ public class SimuladorPrincipal extends JFrame {
         btnCargarEstado.addActionListener(e -> cargarEstadoSimulador());
         btnMostrarMetricas.addActionListener(e -> { detenerSimulacionContinua(); mostrarMetricasEnConsolaYGrafica(); });
         btnSalir.addActionListener(e -> { this.dispatchEvent(new java.awt.event.WindowEvent(this, java.awt.event.WindowEvent.WINDOW_CLOSING)); });
+
+        // --- INICIO CÓDIGO AÑADIDO ---
+        btnResetearSim.addActionListener(e -> {
+            detenerSimulacionContinua();
+            streamRedirector.restoreSystemStreams(); // Restaura la consola
+            
+            // Pedir confirmación al usuario
+            int confirm = JOptionPane.showConfirmDialog(this, 
+                "¿Estás seguro de que deseas resetear la simulación?\nSe perderá todo el estado actual no guardado.", 
+                "Confirmar Reseteo", 
+                JOptionPane.YES_NO_OPTION, 
+                JOptionPane.WARNING_MESSAGE);
+            
+            if (confirm == JOptionPane.YES_OPTION) {
+                simulador.resetearSimulacion(); // Llama al nuevo método
+                consola.limpiar();
+                consola.agregarLinea("Simulación reseteada.", COLOR_DETALLES_VERDE);
+                actualizarDashboardInicial(); // Actualiza la GUI
+                selectorAlgoritmo.setSelectedIndex(0); // Pone FCFS en el JComboBox
+            }
+        });
+        // --- FIN CÓDIGO AÑADIDO ---
 
         // Listener para aplicar la velocidad ingresada en el JTextField
         ActionListener aplicarVelocidadAction = e -> {
@@ -307,19 +348,61 @@ public class SimuladorPrincipal extends JFrame {
         if (np != null) { simulador.setPlanificador(np); consola.agregarLinea("Planificador: " + np.getNombre(), COLOR_DETALLES_VERDE); actualizarDashboard(); }
     }
 
+    // --- INICIO CÓDIGO MODIFICADO ---
     /** Carga el estado previamente guardado del simulador. */
     private void cargarEstadoSimulador() {
-        detenerSimulacionContinua(); streamRedirector.restoreSystemStreams(); // Restaura consola antes de cargar
-        if (simulador.cargarEstado()) {
-            consola.limpiar(); consola.agregarLinea("Estado cargado. Reiniciando...", COLOR_DETALLES_VERDE);
-            simulador.asignarSemaforoAProcesos(); simulador.reiniciarHilosPostCarga();
-            actualizarDashboardInicial(); // Actualiza GUI con el estado cargado
-            // Actualiza el selector de algoritmo en la GUI para reflejar el cargado
-            Planificador p = simulador.getPlanificador();
-            if (p != null) { for (int i = 0; i < selectorAlgoritmo.getItemCount(); i++) { String item = selectorAlgoritmo.getItemAt(i); String nItem = item.replaceAll("^\\d+\\.\\s*|\\s*\\(.*?\\)$", "").trim(); String nCargado = p.getNombre().replaceAll("^\\d+\\.\\s*|\\s*\\(.*?Q:.*?\\)$", "").trim(); if (nItem.equalsIgnoreCase(nCargado)) { selectorAlgoritmo.setSelectedIndex(i); break; } } }
-            consola.agregarLinea("Listo.", COLOR_DETALLES_VERDE);
-        } else { consola.agregarLinea("Fallo al cargar.", COLOR_BOTON_DETENER); }
+        detenerSimulacionContinua();
+        streamRedirector.restoreSystemStreams(); // Restaura consola antes de cargar
+
+        // 1. Crear y configurar el JFileChooser
+        JFileChooser fileChooser = new JFileChooser();
+        fileChooser.setDialogTitle("Seleccionar Archivo de Estado (.txt)");
+        // Inicia en el directorio donde se ejecuta el programa
+        fileChooser.setCurrentDirectory(new File(".")); 
+        // Filtra para mostrar solo archivos .txt
+        fileChooser.setFileFilter(new FileNameExtensionFilter("Archivos de Estado (*.txt)", "txt"));
+        fileChooser.setAcceptAllFileFilterUsed(false); // No muestra la opción "Todos los archivos"
+
+        // 2. Mostrar el diálogo
+        int resultado = fileChooser.showOpenDialog(this);
+
+        // 3. Procesar la selección del usuario
+        if (resultado == JFileChooser.APPROVE_OPTION) {
+            File archivoSeleccionado = fileChooser.getSelectedFile();
+            String rutaArchivo = archivoSeleccionado.getAbsolutePath();
+
+            // 4. Intentar cargar el estado desde el archivo seleccionado
+            // Llama al nuevo método sobrecargado en Simulador.java
+            if (simulador.cargarEstado(rutaArchivo)) { 
+                consola.limpiar();
+                consola.agregarLinea("Estado cargado desde '" + archivoSeleccionado.getName() + "'. Reiniciando...", COLOR_DETALLES_VERDE);
+                simulador.asignarSemaforoAProcesos();
+                simulador.reiniciarHilosPostCarga();
+                actualizarDashboardInicial(); // Actualiza GUI con el estado cargado
+
+                // Actualiza el selector de algoritmo en la GUI para reflejar el cargado
+                Planificador p = simulador.getPlanificador();
+                if (p != null) {
+                    for (int i = 0; i < selectorAlgoritmo.getItemCount(); i++) {
+                        String item = selectorAlgoritmo.getItemAt(i);
+                        String nItem = item.replaceAll("^\\d+\\.\\s*|\\s*\\(.*?\\)$", "").trim();
+                        String nCargado = p.getNombre().replaceAll("^\\d+\\.\\s*|\\s*\\(.*?Q:.*?\\)$", "").trim();
+                        if (nItem.equalsIgnoreCase(nCargado)) {
+                            selectorAlgoritmo.setSelectedIndex(i);
+                            break;
+                        }
+                    }
+                }
+                consola.agregarLinea("Listo.", COLOR_DETALLES_VERDE);
+            } else {
+                consola.agregarLinea("Fallo al cargar el archivo '" + archivoSeleccionado.getName() + "'. Verifique el formato.", COLOR_BOTON_DETENER);
+            }
+        } else {
+            // El usuario cerró el diálogo o presionó "Cancelar"
+            consola.agregarLinea("Carga de estado cancelada por el usuario.", COLOR_TEXTO_COMENTARIO);
+        }
     }
+    // --- FIN CÓDIGO MODIFICADO ---
 
     /**
      * Muestra un diálogo rediseñado para que el usuario ingrese los datos de un nuevo proceso.
@@ -431,7 +514,7 @@ public class SimuladorPrincipal extends JFrame {
     private void actualizarDashboardInicial() { velocidadTextField.setText(String.valueOf(simulador.getConfig().getDuracionCicloMs())); actualizarDashboard(); }
 
     /** Muestra un mensaje de bienvenida en la consola de la GUI. */
-    private void mostrarBienvenida() { consola.agregarSeparador(); consola.agregarLinea("SIMULADOR PLANIFICACIÓN SO - Adrián Vegas (Rediseñado)", COLOR_DETALLES_NARANJA); consola.agregarSeparador(); consola.agregarLinea("Estado inicial cargado. Selecciona una acción.", COLOR_TEXTO_COMENTARIO); consola.agregarLinea(""); }
+    private void mostrarBienvenida() { consola.agregarSeparador(); consola.agregarLinea("Proyecto #1- Simulador Planificador SO VERSION 1.0 ", COLOR_DETALLES_NARANJA); consola.agregarSeparador(); consola.agregarLinea("Estado inicial cargado. Selecciona una acción.", COLOR_TEXTO_COMENTARIO); consola.agregarLinea(""); }
 
     /** Punto de entrada principal de la aplicación. Crea el simulador y lanza la GUI. */
     public static void main(String[] args) { ConfiguracionSimulacion config = ConfiguracionSimulacion.cargarConfiguracion(); Planificador planificadorInicial = new PlanificadorFCFS(); Simulador sim = new Simulador(config, planificadorInicial); SwingUtilities.invokeLater(() -> { SimuladorPrincipal gui = new SimuladorPrincipal(sim); gui.setVisible(true); }); }
