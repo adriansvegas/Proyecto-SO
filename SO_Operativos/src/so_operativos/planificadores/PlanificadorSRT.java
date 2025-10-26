@@ -4,7 +4,7 @@
  */
 package so_operativos.planificadores;
 
-import so_operativos.CustomQueue;
+import so_operativos.Cola;
 import so_operativos.Planificador;
 import so_operativos.Proceso;
 
@@ -15,7 +15,7 @@ import so_operativos.Proceso;
 // Clase SRT (SJF Expropiativo)
  public class PlanificadorSRT implements Planificador {
     @Override
-    public Proceso seleccionarSiguiente(CustomQueue colaListos) {
+    public Proceso seleccionarSiguiente(Cola colaListos) {
         // La selección es igual a SJF; la expropiación ocurre en el Simulador
         if (colaListos.isEmpty()) return null;
         Proceso[] lista = colaListos.toArray();

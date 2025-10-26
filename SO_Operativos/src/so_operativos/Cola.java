@@ -4,13 +4,13 @@ package so_operativos;
  * Implementación de una Cola (Queue) FIFO usando una Lista Simplemente Enlazada.
  * Diseñada específicamente para este proyecto para evitar usar java.util.Queue.
  */
-public class CustomQueue {
+public class Cola {
     private CustomNode head; // Referencia al primer nodo (frente de la cola)
     private CustomNode tail; // Referencia al último nodo (final de la cola)
     private int size; // Número de elementos en la cola
 
     /** Constructor que inicializa una cola vacía. */
-    public CustomQueue() { this.head = null; this.tail = null; this.size = 0; }
+    public Cola() { this.head = null; this.tail = null; this.size = 0; }
 
     /**
      * Añade un proceso al final de la cola (enqueue).
@@ -94,6 +94,6 @@ public class CustomQueue {
             }
             current = current.getNext();
         }
-        return null; // No encontrado
+        return null; 
     }
 }

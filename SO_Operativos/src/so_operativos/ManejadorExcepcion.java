@@ -7,7 +7,7 @@ package so_operativos;
  */
 public class ManejadorExcepcion implements Runnable {
     private final Proceso procesoEnEspera; // El proceso que está realizando la E/S
-    private final CustomQueue colaListos; // Cola a la que volverá el proceso al terminar E/S
+    private final Cola colaListos; // Cola a la que volverá el proceso al terminar E/S
     private final long duracionCicloMs; // Duración de un ciclo (para simular espera)
     private final int ciclosIoIniciales; // Ciclos de E/S que ya había completado (si se reanuda)
 
@@ -17,7 +17,7 @@ public class ManejadorExcepcion implements Runnable {
      * @param colaListos La cola de procesos listos del simulador.
      * @param duracionCicloMs Duración de un ciclo de simulación en ms.
      */
-    public ManejadorExcepcion(Proceso proceso, CustomQueue colaListos, long duracionCicloMs) {
+    public ManejadorExcepcion(Proceso proceso, Cola colaListos, long duracionCicloMs) {
         this.procesoEnEspera = proceso;
         this.colaListos = colaListos;
         this.duracionCicloMs = duracionCicloMs;

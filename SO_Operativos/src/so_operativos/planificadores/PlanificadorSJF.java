@@ -4,7 +4,7 @@
  */
 package so_operativos.planificadores;
 
-import so_operativos.CustomQueue;
+import so_operativos.Cola;
 import so_operativos.Planificador;
 import so_operativos.Proceso;
 
@@ -15,7 +15,7 @@ import so_operativos.Proceso;
 // Clase SJF
 public class PlanificadorSJF implements Planificador {
     @Override
-    public Proceso seleccionarSiguiente(CustomQueue colaListos) {
+    public Proceso seleccionarSiguiente(Cola colaListos) {
         if (colaListos.isEmpty()) return null;
         Proceso[] lista = colaListos.toArray();
         Proceso masCorto = lista[0];

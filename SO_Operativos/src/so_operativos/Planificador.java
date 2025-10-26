@@ -20,7 +20,7 @@ public interface Planificador {
      * @param colaListos La cola de procesos en estado LISTO.
      * @return El proceso seleccionado para ejecutar, o null si la cola está vacía.
      */
-    Proceso seleccionarSiguiente(CustomQueue colaListos);
+    Proceso seleccionarSiguiente(Cola colaListos);
 
     /**
      * Devuelve el nombre descriptivo del algoritmo de planificación.
