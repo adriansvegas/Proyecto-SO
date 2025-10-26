@@ -1,0 +1,32 @@
+/*
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
+ * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/Class.java to edit this template
+ */
+package so_operativos.planificadores;
+
+import so_operativos.CustomQueue;
+import so_operativos.Planificador;
+import so_operativos.Proceso;
+
+/**
+ *
+ * @author Edgar
+ */
+// Clase SRT (SJF Expropiativo)
+ public class PlanificadorSRT implements Planificador {
+    @Override
+    public Proceso seleccionarSiguiente(CustomQueue colaListos) {
+        // La selección es igual a SJF; la expropiación ocurre en el Simulador
+        if (colaListos.isEmpty()) return null;
+        Proceso[] lista = colaListos.toArray();
+        Proceso masCorto = lista[0];
+        for (int i = 1; i < lista.length; i++) {
+            if (lista[i].getInstruccionesRestantes() < masCorto.getInstruccionesRestantes()) {
+                masCorto = lista[i];
+            }
+        }
+        return colaListos.remove(masCorto);
+    }
+    @Override
+    public String getNombre() { return "3. SRT (SJF Expropiativo)"; }
+}

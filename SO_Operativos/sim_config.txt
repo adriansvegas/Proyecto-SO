@@ -1,1 +1,1 @@
-duracionCicloMs=100
+duracionCicloMs=10
