@@ -15,18 +15,28 @@ import java.io.BufferedReader;
  * @author Edgar
  */
 
+/**
+ * Gestiona la configuración de la simulación, específicamente la duración del ciclo.
+ * Permite cargar y guardar esta configuración en un archivo.
+ */
 public class ConfiguracionSimulacion {
-    private long duracionCicloMs = 100; // Valor por defecto
-    private static final String CONFIG_FILE = "sim_config.txt"; // Nombre del archivo
+    private long duracionCicloMs = 100; // Duración por defecto de un ciclo en milisegundos
+    private static final String CONFIG_FILE = "sim_config.txt"; // Nombre del archivo de configuración
 
+    /** Obtiene la duración actual del ciclo. */
     public long getDuracionCicloMs() { return duracionCicloMs; }
 
+    /** Establece una nueva duración para el ciclo y guarda la configuración. */
     public void setDuracionCicloMs(long duracionCicloMs) {
         this.duracionCicloMs = duracionCicloMs;
-        guardarConfiguracion(); // Llama a guardar al modificar
+        guardarConfiguracion(); // Guarda automáticamente al modificar
     }
 
-    // Modificado para cargar desde archivo
+    /**
+     * Carga la configuración desde el archivo CONFIG_FILE.
+     * Si el archivo no existe o hay un error, usa y guarda los valores por defecto.
+     * @return Una instancia de ConfiguracionSimulacion con los valores cargados o por defecto.
+     */
     public static ConfiguracionSimulacion cargarConfiguracion() {
         ConfiguracionSimulacion config = new ConfiguracionSimulacion();
         try (BufferedReader reader = new BufferedReader(new FileReader(CONFIG_FILE))) {
@@ -40,21 +50,19 @@ public class ConfiguracionSimulacion {
                }
             }
         } catch (IOException | NumberFormatException e) {
-            System.err.println("No se pudo cargar la configuración desde " + CONFIG_FILE + ", usando valores por defecto. Error: " + e.getMessage());
-            // Si falla al leer o parsear, simplemente usa los valores por defecto.
-            // Crea el archivo con el valor por defecto si no existe o falla la carga inicial.
-             config.guardarConfiguracion();
+            System.err.println("No se pudo cargar config desde " + CONFIG_FILE + ", usando defecto. Error: " + e.getMessage());
+            config.guardarConfiguracion(); // Guarda el valor por defecto si falla la carga
         }
         return config;
     }
 
-    // Modificado para guardar en archivo (ya no es privado para poder llamarlo desde cargarConfiguracion si falla)
+    /** Guarda la configuración actual (duracionCicloMs) en el archivo CONFIG_FILE. */
     void guardarConfiguracion() {
         try (FileWriter writer = new FileWriter(CONFIG_FILE, false)) { // false para sobrescribir
             writer.write("duracionCicloMs=" + this.duracionCicloMs + "\n");
              System.out.println("Configuración guardada en " + CONFIG_FILE);
         } catch (IOException e) {
-            System.err.println("Error al guardar la configuración en " + CONFIG_FILE + ": " + e.getMessage());
+            System.err.println("Error al guardar config en " + CONFIG_FILE + ": " + e.getMessage());
         }
     }
 }
